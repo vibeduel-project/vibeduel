@@ -10,6 +10,7 @@ export type HomeRoute = {
 export type SessionRoute = {
   type: "session"
   sessionID: string
+  secondarySessionID?: string
   initialPrompt?: PromptInfo
 }
 
@@ -22,8 +23,8 @@ export const { use: useRoute, provider: RouteProvider } = createSimpleContext({
       process.env["OPENCODE_ROUTE"]
         ? JSON.parse(process.env["OPENCODE_ROUTE"])
         : {
-            type: "home",
-          },
+          type: "home",
+        },
     )
 
     return {

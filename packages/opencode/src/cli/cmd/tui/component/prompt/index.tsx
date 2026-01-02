@@ -35,7 +35,9 @@ export type PromptProps = {
   sessionID?: string
   visible?: boolean
   disabled?: boolean
-  onSubmit?: () => void
+  focused?: boolean
+  broadcastSessionIDs?: string[]
+  onSubmit?: (sessionID: string, prompt: PromptInfo) => void
   ref?: (ref: PromptRef) => void
   hint?: JSX.Element
   showPlaceholder?: boolean
@@ -374,8 +376,8 @@ export function Prompt(props: PromptProps) {
   })
 
   createEffect(() => {
-    if (props.visible !== false) input?.focus()
-    if (props.visible === false) input?.blur()
+    if (props.visible !== false && props.focused !== false) input?.focus()
+    if (props.visible === false || props.focused === false) input?.blur()
   })
 
   onMount(() => {
@@ -565,9 +567,9 @@ export function Prompt(props: PromptProps) {
     const sessionID = props.sessionID
       ? props.sessionID
       : await (async () => {
-          const sessionID = await sdk.client.session.create({}).then((x) => x.data!.id)
-          return sessionID
-        })()
+        const sessionID = await sdk.client.session.create({}).then((x) => x.data!.id)
+        return sessionID
+      })()
     const messageID = Identifier.ascending("message")
     let inputText = store.prompt.input
 
@@ -624,17 +626,14 @@ export function Prompt(props: PromptProps) {
         variant,
       })
     } else {
-      sdk.client.session.prompt({
-        sessionID,
-        ...selectedModel,
-        messageID,
+      const payloadProto = {
         agent: local.agent.current().name,
         model: selectedModel,
         variant,
         parts: [
           {
             id: Identifier.ascending("part"),
-            type: "text",
+            type: "text" as const,
             text: inputText,
           },
           ...nonTextParts.map((x) => ({
@@ -642,20 +641,47 @@ export function Prompt(props: PromptProps) {
             ...x,
           })),
         ],
+      }
+
+      sdk.client.session.prompt({
+        sessionID,
+        messageID,
+        ...payloadProto
       })
+
+      if (props.broadcastSessionIDs) {
+        for (const targetID of props.broadcastSessionIDs) {
+          sdk.client.session.prompt({
+            sessionID: targetID,
+            // Use a new message ID for the broadcasted message to avoid potential conflicts
+            messageID: Identifier.ascending("message"),
+            ...payloadProto
+          })
+        }
+      }
     }
     history.append({
       ...store.prompt,
       mode: currentMode,
     })
+    const promptInfo = { ...store.prompt, mode: currentMode }
+
+    // Clear input state
     input.extmarks.clear()
     setStore("prompt", {
       input: "",
       parts: [],
     })
     setStore("extmarkToPartIndex", new Map())
-    props.onSubmit?.()
 
+    // Call onSubmit if provided
+    if (props.onSubmit) {
+      props.onSubmit(sessionID, promptInfo)
+      input.clear()
+      return
+    }
+
+    // Default navigation behavior if no onSubmit provider
     // temporary hack to make sure the message is sent
     if (!props.sessionID)
       setTimeout(() => {
@@ -936,7 +962,7 @@ export function Prompt(props: PromptProps) {
                     // Handle SVG as raw text content, not as base64 image
                     if (file.type === "image/svg+xml") {
                       event.preventDefault()
-                      const content = await file.text().catch(() => {})
+                      const content = await file.text().catch(() => { })
                       if (content) {
                         pasteText(content, `[SVG: ${file.name ?? "image"}]`)
                         return
@@ -947,7 +973,7 @@ export function Prompt(props: PromptProps) {
                       const content = await file
                         .arrayBuffer()
                         .then((buffer) => Buffer.from(buffer).toString("base64"))
-                        .catch(() => {})
+                        .catch(() => { })
                       if (content) {
                         await pasteImage({
                           filename: file.name,
@@ -957,7 +983,7 @@ export function Prompt(props: PromptProps) {
                         return
                       }
                     }
-                  } catch {}
+                  } catch { }
                 }
 
                 const lineCount = (pastedContent.match(/\n/g)?.length ?? 0) + 1
@@ -1025,13 +1051,13 @@ export function Prompt(props: PromptProps) {
             customBorderChars={
               theme.backgroundElement.a !== 0
                 ? {
-                    ...EmptyBorder,
-                    horizontal: "▀",
-                  }
+                  ...EmptyBorder,
+                  horizontal: "▀",
+                }
                 : {
-                    ...EmptyBorder,
-                    horizontal: " ",
-                  }
+                  ...EmptyBorder,
+                  horizontal: " ",
+                }
             }
           />
         </box>

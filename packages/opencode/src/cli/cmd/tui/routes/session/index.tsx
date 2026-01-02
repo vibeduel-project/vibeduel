@@ -73,13 +73,13 @@ import { formatTranscript } from "../../util/transcript"
 addDefaultParsers(parsers.parsers)
 
 class CustomSpeedScroll implements ScrollAcceleration {
-  constructor(private speed: number) {}
+  constructor(private speed: number) { }
 
   tick(_now?: number): number {
     return this.speed
   }
 
-  reset(): void {}
+  reset(): void { }
 }
 
 const context = createContext<{
@@ -91,7 +91,24 @@ const context = createContext<{
   usernameVisible: () => boolean
   showDetails: () => boolean
   diffWrapMode: () => "word" | "none"
+  showAssistantMetadata: () => boolean
+  showScrollbar: () => boolean
   sync: ReturnType<typeof useSync>
+  setConceal: (v: boolean | ((prev: boolean) => boolean)) => void
+  setShowThinking: (v: boolean | ((prev: boolean) => boolean)) => void
+  setShowTimestamps: (v: boolean | ((prev: boolean) => boolean)) => void
+  setUsernameVisible: (v: boolean | ((prev: boolean) => boolean)) => void
+  setShowDetails: (v: boolean | ((prev: boolean) => boolean)) => void
+  setShowAssistantMetadata: (v: boolean | ((prev: boolean) => boolean)) => void
+  setShowScrollbar: (v: boolean | ((prev: boolean) => boolean)) => void
+  sidebar: () => "show" | "hide" | "auto"
+  setSidebar: (v: "show" | "hide" | "auto" | ((prev: "show" | "hide" | "auto") => "show" | "hide" | "auto")) => void
+  sidebarVisible: () => boolean
+  setDiffWrapMode: (v: "word" | "none" | ((prev: "word" | "none") => "word" | "none")) => void
+  animationsEnabled: () => boolean
+  setAnimationsEnabled: (v: boolean | ((prev: boolean) => boolean)) => void
+  activeSessionID: () => string
+  setActiveSessionID: (id: string) => void
 }>()
 
 function use() {
@@ -107,16 +124,148 @@ export function Session() {
   const kv = useKV()
   const { theme } = useTheme()
   const promptRef = usePromptRef()
-  const session = createMemo(() => sync.session.get(route.sessionID)!)
+
+  const [sidebar, setSidebar] = createSignal<"show" | "hide" | "auto">(kv.get("sidebar", "hide"))
+  const [conceal, setConceal] = createSignal(true)
+  const [showThinking, setShowThinking] = createSignal(kv.get("thinking_visibility", true))
+  const [showTimestamps, setShowTimestamps] = createSignal(kv.get("timestamps", "hide") === "show")
+  const [usernameVisible, setUsernameVisible] = createSignal(kv.get("username_visible", true))
+  const [showDetails, setShowDetails] = createSignal(kv.get("tool_details_visibility", true))
+  const [showAssistantMetadata, setShowAssistantMetadata] = createSignal(kv.get("assistant_metadata_visibility", true))
+  const [showScrollbar, setShowScrollbar] = createSignal(kv.get("scrollbar_visible", false))
+  const [diffWrapMode, setDiffWrapMode] = createSignal<"word" | "none">("word")
+  const [animationsEnabled, setAnimationsEnabled] = createSignal(kv.get("animations_enabled", true))
+  const dimensions = useTerminalDimensions()
+
+  const wide = createMemo(() => dimensions().width > 120)
+  const sidebarVisible = createMemo(() => {
+    if (sidebar() === "show") return true
+    if (sidebar() === "auto" && wide()) return true
+    return false
+  })
+
+  const isSplit = createMemo(() => !!route.secondarySessionID)
+  const paneWidth = createMemo(() => {
+    const fullWidth = dimensions().width
+    return isSplit() ? Math.floor(fullWidth * 0.5) : fullWidth
+  })
+
+  // Track which session pane is currently active (has focus)
+  const [activeSessionID, setActiveSessionID] = createSignal(route.sessionID)
+
+  // Ensure active session is valid (defaults to route.sessionID if invalid)
+  createEffect(() => {
+    if (activeSessionID() !== route.sessionID && activeSessionID() !== route.secondarySessionID) {
+      setActiveSessionID(route.sessionID)
+    }
+  })
+
+  return (
+    <context.Provider
+      value={{
+        get width() {
+          return dimensions().width
+        },
+        sessionID: route.sessionID,
+        conceal,
+        setConceal,
+        showThinking,
+        setShowThinking,
+        showTimestamps,
+        setShowTimestamps,
+        usernameVisible,
+        setUsernameVisible,
+        showDetails,
+        setShowDetails,
+        showAssistantMetadata,
+        setShowAssistantMetadata,
+        showScrollbar,
+        setShowScrollbar,
+        sidebar,
+        setSidebar,
+        sidebarVisible,
+        diffWrapMode,
+        setDiffWrapMode,
+        animationsEnabled,
+        setAnimationsEnabled,
+        sync,
+        activeSessionID,
+        setActiveSessionID,
+      }}
+    >
+      <box flexDirection="row">
+        <SessionPane
+          sessionID={route.sessionID}
+          width={paneWidth()}
+          isSplit={isSplit()}
+          isPrimary={true}
+        />
+        <Show when={route.secondarySessionID}>
+          <SessionPane
+            sessionID={route.secondarySessionID!}
+            width={paneWidth()}
+            isSplit={isSplit()}
+            isPrimary={false}
+          />
+        </Show>
+      </box>
+    </context.Provider>
+  )
+}
+
+function SessionPane(props: { sessionID: string; width: number; isSplit: boolean; isPrimary: boolean }) {
+  const sync = useSync()
+  const kv = useKV()
+  const { theme } = useTheme()
+  const promptRef = usePromptRef()
+  const route = useRouteData("session")
+  const { navigate } = useRoute()
+
+  const session = createMemo(() => sync.session.get(props.sessionID))
+  const parentCtx = use()
+  // Create a merged context for this pane
+  const ctx = {
+    ...parentCtx,
+    get sessionID() { return props.sessionID },
+  }
+
+  const {
+    conceal,
+    setConceal,
+    showThinking,
+    setShowThinking,
+    showTimestamps,
+    setShowTimestamps,
+    usernameVisible,
+    setUsernameVisible,
+    showDetails,
+    setShowDetails,
+    showAssistantMetadata,
+    setShowAssistantMetadata,
+    showScrollbar,
+    setShowScrollbar,
+    sidebar,
+    setSidebar,
+    sidebarVisible,
+    diffWrapMode,
+    setDiffWrapMode,
+    animationsEnabled,
+    setAnimationsEnabled
+  } = ctx
+
   const children = createMemo(() => {
-    const parentID = session()?.parentID ?? session()?.id
+    const s = session()
+    if (!s) return []
+    const parentID = s.parentID ?? s.id
     return sync.data.session
       .filter((x) => x.parentID === parentID || x.id === parentID)
       .toSorted((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   })
-  const messages = createMemo(() => sync.data.message[route.sessionID] ?? [])
+  const messages = createMemo(() => sync.data.message[props.sessionID] ?? [])
   const permissions = createMemo(() => {
-    if (session().parentID) return sync.data.permission[route.sessionID] ?? []
+    const s = session()
+    if (!s) return []
+    if (s.parentID) return sync.data.permission[props.sessionID] ?? []
     return children().flatMap((x) => sync.data.permission[x.id] ?? [])
   })
 
@@ -129,25 +278,7 @@ export function Session() {
   })
 
   const dimensions = useTerminalDimensions()
-  const [sidebar, setSidebar] = createSignal<"show" | "hide" | "auto">(kv.get("sidebar", "auto"))
-  const [conceal, setConceal] = createSignal(true)
-  const [showThinking, setShowThinking] = createSignal(kv.get("thinking_visibility", true))
-  const [showTimestamps, setShowTimestamps] = createSignal(kv.get("timestamps", "hide") === "show")
-  const [usernameVisible, setUsernameVisible] = createSignal(kv.get("username_visible", true))
-  const [showDetails, setShowDetails] = createSignal(kv.get("tool_details_visibility", true))
-  const [showAssistantMetadata, setShowAssistantMetadata] = createSignal(kv.get("assistant_metadata_visibility", true))
-  const [showScrollbar, setShowScrollbar] = createSignal(kv.get("scrollbar_visible", false))
-  const [diffWrapMode, setDiffWrapMode] = createSignal<"word" | "none">("word")
-  const [animationsEnabled, setAnimationsEnabled] = createSignal(kv.get("animations_enabled", true))
-
   const wide = createMemo(() => dimensions().width > 120)
-  const sidebarVisible = createMemo(() => {
-    if (session()?.parentID) return false
-    if (sidebar() === "show") return true
-    if (sidebar() === "auto" && wide()) return true
-    return false
-  })
-  const contentWidth = createMemo(() => dimensions().width - (sidebarVisible() ? 42 : 0) - 4)
 
   const scrollAcceleration = createMemo(() => {
     const tui = sync.data.config.tui
@@ -163,17 +294,17 @@ export function Session() {
 
   createEffect(async () => {
     await sync.session
-      .sync(route.sessionID)
+      .sync(props.sessionID)
       .then(() => {
         if (scroll) scroll.scrollBy(100_000)
       })
       .catch((e) => {
         console.error(e)
+        // Only navigate home if the main session is missing, but for now just log error for pane
         toast.show({
-          message: `Session not found: ${route.sessionID}`,
+          message: `Session not found: ${props.sessionID}`,
           variant: "error",
         })
-        return navigate({ type: "home" })
       })
   })
 
@@ -262,29 +393,29 @@ export function Session() {
   command.register(() => [
     ...(sync.data.config.share !== "disabled"
       ? [
-          {
-            title: "Share session",
-            value: "session.share",
-            suggested: route.type === "session",
-            keybind: "session_share" as const,
-            disabled: !!session()?.share?.url,
-            category: "Session",
-            onSelect: async (dialog: any) => {
-              await sdk.client.session
-                .share({
-                  sessionID: route.sessionID,
-                })
-                .then((res) =>
-                  Clipboard.copy(res.data!.share!.url).catch(() =>
-                    toast.show({ message: "Failed to copy URL to clipboard", variant: "error" }),
-                  ),
-                )
-                .then(() => toast.show({ message: "Share URL copied to clipboard!", variant: "success" }))
-                .catch(() => toast.show({ message: "Failed to share session", variant: "error" }))
-              dialog.clear()
-            },
+        {
+          title: "Share session",
+          value: "session.share",
+          suggested: route.type === "session",
+          keybind: "session_share" as const,
+          disabled: !!session()?.share?.url,
+          category: "Session",
+          onSelect: async (dialog: any) => {
+            await sdk.client.session
+              .share({
+                sessionID: route.sessionID,
+              })
+              .then((res) =>
+                Clipboard.copy(res.data!.share!.url).catch(() =>
+                  toast.show({ message: "Failed to copy URL to clipboard", variant: "error" }),
+                ),
+              )
+              .then(() => toast.show({ message: "Share URL copied to clipboard!", variant: "success" }))
+              .catch(() => toast.show({ message: "Failed to share session", variant: "error" }))
+            dialog.clear()
           },
-        ]
+        },
+      ]
       : []),
     {
       title: "Rename session",
@@ -380,8 +511,8 @@ export function Session() {
       category: "Session",
       onSelect: async (dialog) => {
         const status = sync.data.session_status?.[route.sessionID]
-        if (status?.type !== "idle") await sdk.client.session.abort({ sessionID: route.sessionID }).catch(() => {})
-        const revert = session().revert?.messageID
+        if (status?.type !== "idle") await sdk.client.session.abort({ sessionID: route.sessionID }).catch(() => { })
+        const revert = session()?.revert?.messageID
         const message = messages().findLast((x) => (!revert || x.id < revert) && x.role === "user")
         if (!message) return
         sdk.client.session
@@ -416,7 +547,7 @@ export function Session() {
       category: "Session",
       onSelect: (dialog) => {
         dialog.clear()
-        const messageID = session().revert?.messageID
+        const messageID = session()?.revert?.messageID
         if (!messageID) return
         const message = messages().find((x) => x.role === "user" && x.id > messageID)
         if (!message) {
@@ -715,6 +846,7 @@ export function Session() {
       onSelect: async (dialog) => {
         try {
           const sessionData = session()
+          if (!sessionData) return
           const sessionMessages = messages()
           const transcript = formatTranscript(
             sessionData,
@@ -742,6 +874,8 @@ export function Session() {
         try {
           const sessionData = session()
           const sessionMessages = messages()
+
+          if (!sessionData) return
 
           const defaultFilename = `session-${sessionData.id.slice(0, 8)}.md`
 
@@ -885,168 +1019,155 @@ export function Session() {
   createEffect(on(() => route.sessionID, toBottom))
 
   return (
-    <context.Provider
-      value={{
-        get width() {
-          return contentWidth()
-        },
-        sessionID: route.sessionID,
-        conceal,
-        showThinking,
-        showTimestamps,
-        usernameVisible,
-        showDetails,
-        diffWrapMode,
-        sync,
-      }}
-    >
-      <box flexDirection="row">
-        <box flexGrow={1} paddingBottom={1} paddingTop={1} paddingLeft={2} paddingRight={2} gap={1}>
-          <Show when={session()}>
-            <Show when={!sidebarVisible()}>
-              <Header />
-            </Show>
-            <scrollbox
-              ref={(r) => (scroll = r)}
-              viewportOptions={{
-                paddingRight: showScrollbar() ? 1 : 0,
-              }}
-              verticalScrollbarOptions={{
-                paddingLeft: 1,
-                visible: showScrollbar(),
-                trackOptions: {
-                  backgroundColor: theme.backgroundElement,
-                  foregroundColor: theme.border,
-                },
-              }}
-              stickyScroll={true}
-              stickyStart="bottom"
-              flexGrow={1}
-              scrollAcceleration={scrollAcceleration()}
-            >
-              <For each={messages()}>
-                {(message, index) => (
-                  <Switch>
-                    <Match when={message.id === revert()?.messageID}>
-                      {(function () {
-                        const command = useCommandDialog()
-                        const [hover, setHover] = createSignal(false)
-                        const dialog = useDialog()
-
-                        const handleUnrevert = async () => {
-                          const confirmed = await DialogConfirm.show(
-                            dialog,
-                            "Confirm Redo",
-                            "Are you sure you want to restore the reverted messages?",
-                          )
-                          if (confirmed) {
-                            command.trigger("session.redo")
-                          }
-                        }
-
-                        return (
-                          <box
-                            onMouseOver={() => setHover(true)}
-                            onMouseOut={() => setHover(false)}
-                            onMouseUp={handleUnrevert}
-                            marginTop={1}
-                            flexShrink={0}
-                            border={["left"]}
-                            customBorderChars={SplitBorder.customBorderChars}
-                            borderColor={theme.backgroundPanel}
-                          >
-                            <box
-                              paddingTop={1}
-                              paddingBottom={1}
-                              paddingLeft={2}
-                              backgroundColor={hover() ? theme.backgroundElement : theme.backgroundPanel}
-                            >
-                              <text fg={theme.textMuted}>{revert()!.reverted.length} message reverted</text>
-                              <text fg={theme.textMuted}>
-                                <span style={{ fg: theme.text }}>{keybind.print("messages_redo")}</span> or /redo to
-                                restore
-                              </text>
-                              <Show when={revert()!.diffFiles?.length}>
-                                <box marginTop={1}>
-                                  <For each={revert()!.diffFiles}>
-                                    {(file) => (
-                                      <text fg={theme.text}>
-                                        {file.filename}
-                                        <Show when={file.additions > 0}>
-                                          <span style={{ fg: theme.diffAdded }}> +{file.additions}</span>
-                                        </Show>
-                                        <Show when={file.deletions > 0}>
-                                          <span style={{ fg: theme.diffRemoved }}> -{file.deletions}</span>
-                                        </Show>
-                                      </text>
-                                    )}
-                                  </For>
-                                </box>
-                              </Show>
-                            </box>
-                          </box>
-                        )
-                      })()}
-                    </Match>
-                    <Match when={revert()?.messageID && message.id >= revert()!.messageID}>
-                      <></>
-                    </Match>
-                    <Match when={message.role === "user"}>
-                      <UserMessage
-                        index={index()}
-                        onMouseUp={() => {
-                          if (renderer.getSelection()?.getSelectedText()) return
-                          dialog.replace(() => (
-                            <DialogMessage
-                              messageID={message.id}
-                              sessionID={route.sessionID}
-                              setPrompt={(promptInfo) => prompt.set(promptInfo)}
-                            />
-                          ))
-                        }}
-                        message={message as UserMessage}
-                        parts={sync.data.part[message.id] ?? []}
-                        pending={pending()}
-                      />
-                    </Match>
-                    <Match when={message.role === "assistant"}>
-                      <AssistantMessage
-                        last={lastAssistant()?.id === message.id}
-                        message={message as AssistantMessage}
-                        parts={sync.data.part[message.id] ?? []}
-                      />
-                    </Match>
-                  </Switch>
-                )}
-              </For>
-            </scrollbox>
-            <box flexShrink={0}>
-              <Show when={permissions().length > 0}>
-                <PermissionPrompt request={permissions()[0]} />
-              </Show>
-              <Prompt
-                visible={!session().parentID && permissions().length === 0}
-                ref={(r) => {
-                  prompt = r
-                  promptRef.set(r)
-                }}
-                disabled={permissions().length > 0}
-                onSubmit={() => {
-                  toBottom()
-                }}
-                sessionID={route.sessionID}
-              />
-            </box>
-            <Show when={!sidebarVisible()}>
-              <Footer />
-            </Show>
+    <context.Provider value={ctx}>
+      <box width={props.width} paddingBottom={1} paddingTop={1} paddingLeft={2} paddingRight={2} gap={1}>
+        <Show when={session()}>
+          <Show when={!sidebarVisible()}>
+            <Header />
           </Show>
-          <Toast />
-        </box>
-        <Show when={sidebarVisible()}>
-          <Sidebar sessionID={route.sessionID} />
+          <scrollbox
+            ref={(r) => (scroll = r)}
+            viewportOptions={{
+              paddingRight: showScrollbar() ? 1 : 0,
+            }}
+            verticalScrollbarOptions={{
+              paddingLeft: 1,
+              visible: showScrollbar(),
+              trackOptions: {
+                backgroundColor: theme.backgroundElement,
+                foregroundColor: theme.border,
+              },
+            }}
+            stickyScroll={true}
+            stickyStart="bottom"
+            flexGrow={1}
+            scrollAcceleration={scrollAcceleration()}
+          >
+            <For each={messages()}>
+              {(message, index) => (
+                <Switch>
+                  <Match when={message.id === revert()?.messageID}>
+                    {(function () {
+                      const command = useCommandDialog()
+                      const [hover, setHover] = createSignal(false)
+                      const dialog = useDialog()
+
+                      const handleUnrevert = async () => {
+                        const confirmed = await DialogConfirm.show(
+                          dialog,
+                          "Confirm Redo",
+                          "Are you sure you want to restore the reverted messages?",
+                        )
+                        if (confirmed) {
+                          command.trigger("session.redo")
+                        }
+                      }
+
+                      return (
+                        <box
+                          onMouseOver={() => setHover(true)}
+                          onMouseOut={() => setHover(false)}
+                          onMouseUp={handleUnrevert}
+                          marginTop={1}
+                          flexShrink={0}
+                          border={["left"]}
+                          customBorderChars={SplitBorder.customBorderChars}
+                          borderColor={theme.backgroundPanel}
+                        >
+                          <box
+                            paddingTop={1}
+                            paddingBottom={1}
+                            paddingLeft={2}
+                            backgroundColor={hover() ? theme.backgroundElement : theme.backgroundPanel}
+                          >
+                            <text fg={theme.textMuted}>{revert()!.reverted.length} message reverted</text>
+                            <text fg={theme.textMuted}>
+                              <span style={{ fg: theme.text }}>{keybind.print("messages_redo")}</span> or /redo to
+                              restore
+                            </text>
+                            <Show when={revert()!.diffFiles?.length}>
+                              <box marginTop={1}>
+                                <For each={revert()!.diffFiles}>
+                                  {(file) => (
+                                    <text fg={theme.text}>
+                                      {file.filename}
+                                      <Show when={file.additions > 0}>
+                                        <span style={{ fg: theme.diffAdded }}> +{file.additions}</span>
+                                      </Show>
+                                      <Show when={file.deletions > 0}>
+                                        <span style={{ fg: theme.diffRemoved }}> -{file.deletions}</span>
+                                      </Show>
+                                    </text>
+                                  )}
+                                </For>
+                              </box>
+                            </Show>
+                          </box>
+                        </box>
+                      )
+                    })()}
+                  </Match>
+                  <Match when={revert()?.messageID && message.id >= revert()!.messageID}>
+                    <></>
+                  </Match>
+                  <Match when={message.role === "user"}>
+                    <UserMessage
+                      index={index()}
+                      onMouseUp={() => {
+                        if (renderer.getSelection()?.getSelectedText()) return
+                        dialog.replace(() => (
+                          <DialogMessage
+                            messageID={message.id}
+                            sessionID={props.sessionID}
+                            setPrompt={(promptInfo) => prompt.set(promptInfo)}
+                          />
+                        ))
+                      }}
+                      message={message as UserMessage}
+                      parts={sync.data.part[message.id] ?? []}
+                      pending={pending()}
+                    />
+                  </Match>
+                  <Match when={message.role === "assistant"}>
+                    <AssistantMessage
+                      last={lastAssistant()?.id === message.id}
+                      message={message as AssistantMessage}
+                      parts={sync.data.part[message.id] ?? []}
+                    />
+                  </Match>
+                </Switch>
+              )}
+            </For>
+          </scrollbox>
+          <box flexShrink={0}>
+            <Show when={permissions().length > 0}>
+              <PermissionPrompt request={permissions()[0]} />
+            </Show>
+            <Prompt
+              visible={!session()?.parentID && permissions().length === 0}
+              disabled={props.isSplit && props.isPrimary}
+              broadcastSessionIDs={props.isSplit && !props.isPrimary ? [parentCtx.sessionID] : undefined}
+              ref={(r) => {
+                prompt = r
+                // Only register promptRef if this is the "active" session (TODO: logic for active session)
+                // For now, let's just let the last one win or maybe we shouldn't register global ref for both?
+                // promptRef.set(r) 
+              }}
+              onSubmit={() => {
+                toBottom()
+              }}
+              sessionID={props.sessionID}
+            />
+          </box>
+          <Show when={!sidebarVisible()}>
+            <Footer />
+          </Show>
         </Show>
+        <Toast />
       </box>
+      <Show when={sidebarVisible()}>
+        <Sidebar sessionID={props.sessionID} />
+      </Show>
     </context.Provider>
   )
 }

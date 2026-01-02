@@ -8,11 +8,14 @@ import { useSync } from "../context/sync"
 import { Toast } from "../ui/toast"
 import { useArgs } from "../context/args"
 import { useDirectory } from "../context/directory"
-import { useRouteData } from "@tui/context/route"
+import { useRouteData, useRoute } from "@tui/context/route"
 import { usePromptRef } from "../context/prompt"
 import { Installation } from "@/installation"
 import { useKV } from "../context/kv"
 import { useCommandDialog } from "../component/dialog-command"
+import { useSDK } from "@tui/context/sdk"
+import { useLocal } from "../context/local"
+import { Identifier } from "@/id/id"
 
 // TODO: what is the best way to do this?
 let once = false
@@ -21,9 +24,12 @@ export function Home() {
   const sync = useSync()
   const kv = useKV()
   const { theme } = useTheme()
-  const route = useRouteData("home")
+  const routeData = useRouteData("home")
+  const { navigate } = useRoute()
   const promptRef = usePromptRef()
   const command = useCommandDialog()
+  const sdk = useSDK()
+  const local = useLocal()
   const mcp = createMemo(() => Object.keys(sync.data.mcp).length > 0)
   const mcpError = createMemo(() => {
     return Object.values(sync.data.mcp).some((x) => x.status === "failed")
@@ -79,8 +85,8 @@ export function Home() {
   onMount(() => {
     randomizeTip()
     if (once) return
-    if (route.initialPrompt) {
-      prompt.set(route.initialPrompt)
+    if (routeData.initialPrompt) {
+      prompt.set(routeData.initialPrompt)
       once = true
     } else if (args.prompt) {
       prompt.set({ input: args.prompt, parts: [] })
@@ -101,6 +107,44 @@ export function Home() {
               promptRef.set(r)
             }}
             hint={Hint}
+            onSubmit={async (sessionID, promptInfo) => {
+              // Create secondary session
+              const secondarySessionID = await sdk.client.session.create({}).then((x) => x.data!.id)
+
+              const selectedModel = local.model.current()
+              const variant = local.model.variant.current()
+              const messageID = Identifier.ascending("message")
+
+              // Filter out text parts (pasted content) since they're expanded inline
+              const nonTextParts = promptInfo.parts.filter((part) => part.type !== "text")
+
+              // Send same prompt to secondary session
+              sdk.client.session.prompt({
+                sessionID: secondarySessionID,
+                ...selectedModel!,
+                messageID,
+                agent: local.agent.current().name,
+                model: selectedModel!,
+                variant,
+                parts: [
+                  {
+                    id: Identifier.ascending("part"),
+                    type: "text",
+                    text: promptInfo.input,
+                  },
+                  ...nonTextParts.map((x) => ({
+                    id: Identifier.ascending("part"),
+                    ...x,
+                  })),
+                ],
+              })
+
+              navigate({
+                type: "session",
+                sessionID,
+                secondarySessionID,
+              })
+            }}
           />
         </box>
         <Toast />
