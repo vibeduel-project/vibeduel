@@ -44,6 +44,7 @@ export namespace Log {
     print: boolean
     dev?: boolean
     level?: Level
+    filename?: string
   }
 
   let logpath = ""
@@ -59,12 +60,17 @@ export namespace Log {
     if (options.level) level = options.level
     cleanup(Global.Path.log)
     if (options.print) return
-    logpath = path.join(
-      Global.Path.log,
-      options.dev ? "dev.log" : new Date().toISOString().split(".")[0].replace(/:/g, "") + ".log",
-    )
+
+    if (options.filename) {
+      logpath = path.join(Global.Path.log, options.filename)
+    } else {
+      logpath = path.join(
+        Global.Path.log,
+        options.dev ? "dev.log" : new Date().toISOString().split(".")[0].replace(/:/g, "") + ".log",
+      )
+    }
     const logfile = Bun.file(logpath)
-    await fs.truncate(logpath).catch(() => {})
+    await fs.truncate(logpath).catch(() => { })
     const writer = logfile.writer()
     write = async (msg: any) => {
       const num = writer.write(msg)
@@ -84,7 +90,7 @@ export namespace Log {
     if (files.length <= 5) return
 
     const filesToDelete = files.slice(0, -10)
-    await Promise.all(filesToDelete.map((file) => fs.unlink(file).catch(() => {})))
+    await Promise.all(filesToDelete.map((file) => fs.unlink(file).catch(() => { })))
   }
 
   function formatError(error: Error, depth = 0): string {

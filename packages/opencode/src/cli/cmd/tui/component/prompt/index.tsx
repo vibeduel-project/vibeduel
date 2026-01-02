@@ -11,6 +11,7 @@ import { Identifier } from "@/id/id"
 import { createStore, produce } from "solid-js/store"
 import { useKeybind } from "@tui/context/keybind"
 import { Keybind } from "@/util/keybind"
+import { Log } from "@/util/log"
 import { usePromptHistory, type PromptInfo } from "./history"
 import { usePromptStash } from "./stash"
 import { DialogStash } from "../dialog-stash"
@@ -551,9 +552,29 @@ export function Prompt(props: PromptProps) {
   })
 
   async function submit() {
-    if (props.disabled) return
-    if (autocomplete?.visible) return
-    if (!store.prompt.input) return
+    Log.Default.debug("Prompt.submit called", {
+      disabled: props.disabled,
+      autocompleteVisible: autocomplete?.visible,
+      inputLength: store.prompt.input.length,
+      sessionID: props.sessionID,
+      broadcastCount: props.broadcastSessionIDs?.length
+    })
+
+    if (props.disabled) {
+      Log.Default.debug("Prompt.submit blocked: disabled is true")
+      toast.show({ message: "Debug: Submit blocked (disabled=true)", variant: "error" })
+      return
+    }
+    if (autocomplete?.visible) {
+      toast.show({ message: "Debug: Submit blocked (autocomplete visible)", variant: "warning" })
+      return
+    }
+    if (!store.prompt.input) {
+      // toast.show({ message: "Debug: Submit blocked (empty input)", variant: "info" })
+      return
+    }
+
+    toast.show({ message: `Debug: Submitting... Broadcast=${props.broadcastSessionIDs?.length ?? 0}`, variant: "info" })
     const trimmed = store.prompt.input.trim()
     if (trimmed === "exit" || trimmed === "quit" || trimmed === ":q") {
       exit()
@@ -663,6 +684,7 @@ export function Prompt(props: PromptProps) {
               newBroadcastSessionIDs.push(targetID)
             }
           } catch (e) {
+            Log.Default.error("Error forking session for broadcast", { error: e })
             newBroadcastSessionIDs.push(targetID)
           }
         }
@@ -689,6 +711,13 @@ export function Prompt(props: PromptProps) {
         }
       }
     }
+
+    Log.Default.info("Prompt submitted", {
+      input: inputText.slice(0, 50) + (inputText.length > 50 ? "..." : ""),
+      mode: currentMode,
+      variant: typeof variant === 'string' ? variant : (variant as any)?.modelID
+    })
+
     history.append({
       ...store.prompt,
       mode: currentMode,
