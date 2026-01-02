@@ -12,7 +12,9 @@ const Title = (props: { session: Accessor<Session> }) => {
   const { theme } = useTheme()
   return (
     <text fg={theme.text}>
-      <span style={{ bold: true }}>#</span> <span style={{ bold: true }}>{props.session().title}</span>
+      <Show when={props.session()}>
+        <span style={{ bold: true }}>#</span> <span style={{ bold: true }}>{props.session()?.title}</span>
+      </Show>
     </text>
   )
 }
@@ -103,9 +105,9 @@ export function Header() {
               <box flexDirection="row" justifyContent="space-between" gap={1}>
                 <box flexGrow={1} flexShrink={1}>
                   <Switch>
-                    <Match when={session().share?.url}>
+                    <Match when={session()?.share?.url}>
                       <text fg={theme.textMuted} wrapMode="word">
-                        {session().share!.url}
+                        {session()?.share!.url}
                       </text>
                     </Match>
                     <Match when={true}>

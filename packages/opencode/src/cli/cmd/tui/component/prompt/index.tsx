@@ -650,12 +650,41 @@ export function Prompt(props: PromptProps) {
       })
 
       if (props.broadcastSessionIDs) {
+        const newBroadcastSessionIDs: string[] = []
+        // Brutal change: overwrite the left pane with a copy of the right pane
         for (const targetID of props.broadcastSessionIDs) {
+          try {
+            const fork = await sdk.client.session.fork({
+              sessionID,
+            })
+            if (fork.data) {
+              newBroadcastSessionIDs.push(fork.data.id)
+            } else {
+              newBroadcastSessionIDs.push(targetID)
+            }
+          } catch (e) {
+            newBroadcastSessionIDs.push(targetID)
+          }
+        }
+
+        // If we created a new session, update the UI to show it
+        if (
+          newBroadcastSessionIDs.length > 0 &&
+          newBroadcastSessionIDs[0] !== props.broadcastSessionIDs[0]
+        ) {
+          route.navigate({
+            type: "session",
+            sessionID: newBroadcastSessionIDs[0],
+            secondarySessionID: sessionID,
+          })
+        }
+
+        for (const targetID of newBroadcastSessionIDs) {
           sdk.client.session.prompt({
             sessionID: targetID,
             // Use a new message ID for the broadcasted message to avoid potential conflicts
             messageID: Identifier.ascending("message"),
-            ...payloadProto
+            ...payloadProto,
           })
         }
       }
