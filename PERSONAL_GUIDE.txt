@@ -1,0 +1,3 @@
+run in terminal: bun dev
+
+run in browser: bun run --cwd packages/opencode src/index.ts web
