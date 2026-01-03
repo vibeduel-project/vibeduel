@@ -193,6 +193,11 @@ export function Session() {
     setRightColor(undefined)
   }
 
+  const syncMode = createMemo(() => {
+    if (leftColor()) return "left-to-right"
+    return "right-to-left"
+  })
+
   return (
     <context.Provider
       value={{
@@ -242,6 +247,7 @@ export function Session() {
             isSplit={isSplit()}
             isPrimary={true}
             onMessageSubmitted={resetColors}
+            syncMode={syncMode()}
           />
           <Show when={route.secondarySessionID}>
             <SessionPane
@@ -250,6 +256,7 @@ export function Session() {
               isSplit={isSplit()}
               isPrimary={false}
               onMessageSubmitted={resetColors}
+              syncMode={syncMode()}
             />
           </Show>
         </box>
@@ -258,7 +265,7 @@ export function Session() {
   )
 }
 
-function SessionPane(props: { sessionID: string; width: number; isSplit: boolean; isPrimary: boolean; onMessageSubmitted?: () => void }) {
+function SessionPane(props: { sessionID: string; width: number; isSplit: boolean; isPrimary: boolean; onMessageSubmitted?: () => void; syncMode?: "left-to-right" | "right-to-left" }) {
   const sync = useSync()
   const kv = useKV()
   const { theme } = useTheme()
@@ -1199,6 +1206,7 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
                 visible={true}
                 disabled={props.isSplit && props.isPrimary}
                 broadcastSessionIDs={props.isSplit && !props.isPrimary ? [parentCtx.sessionID] : undefined}
+                syncMode={props.syncMode}
                 ref={(r) => {
                   prompt = r
                   if (!props.isSplit || !props.isPrimary) {

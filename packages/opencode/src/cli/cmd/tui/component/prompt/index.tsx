@@ -38,6 +38,7 @@ export type PromptProps = {
   disabled?: boolean
   focused?: boolean
   broadcastSessionIDs?: string[]
+  syncMode?: 'left-to-right' | 'right-to-left'
   onSubmit?: (sessionID: string, prompt: PromptInfo) => void
   ref?: (ref: PromptRef) => void
   hint?: JSX.Element
@@ -672,33 +673,56 @@ export function Prompt(props: PromptProps) {
 
       if (props.broadcastSessionIDs) {
         const newBroadcastSessionIDs: string[] = []
-        // Brutal change: overwrite the left pane with a copy of the right pane
-        for (const targetID of props.broadcastSessionIDs) {
-          try {
-            const fork = await sdk.client.session.fork({
-              sessionID,
-            })
-            if (fork.data) {
-              newBroadcastSessionIDs.push(fork.data.id)
-            } else {
+
+        if (props.syncMode === 'left-to-right') {
+          // Sync Left -> Right (Overwrite Right with Left)
+          for (const leftID of props.broadcastSessionIDs) {
+            newBroadcastSessionIDs.push(leftID)
+            try {
+              const fork = await sdk.client.session.fork({ sessionID: leftID })
+              if (fork.data) {
+                const newRightID = fork.data.id
+                newBroadcastSessionIDs.push(newRightID)
+
+                route.navigate({
+                  type: "session",
+                  sessionID: leftID,
+                  secondarySessionID: newRightID,
+                })
+              }
+            } catch (e) {
+              Log.Default.error("Error forking session for broadcast (left-to-right)", { error: e })
+            }
+          }
+        } else {
+          // Default: Sync Right -> Left (Overwrite Left with copy of Right)
+          for (const targetID of props.broadcastSessionIDs) {
+            try {
+              const fork = await sdk.client.session.fork({
+                sessionID,
+              })
+              if (fork.data) {
+                newBroadcastSessionIDs.push(fork.data.id)
+              } else {
+                newBroadcastSessionIDs.push(targetID)
+              }
+            } catch (e) {
+              Log.Default.error("Error forking session for broadcast", { error: e })
               newBroadcastSessionIDs.push(targetID)
             }
-          } catch (e) {
-            Log.Default.error("Error forking session for broadcast", { error: e })
-            newBroadcastSessionIDs.push(targetID)
           }
-        }
 
-        // If we created a new session, update the UI to show it
-        if (
-          newBroadcastSessionIDs.length > 0 &&
-          newBroadcastSessionIDs[0] !== props.broadcastSessionIDs[0]
-        ) {
-          route.navigate({
-            type: "session",
-            sessionID: newBroadcastSessionIDs[0],
-            secondarySessionID: sessionID,
-          })
+          // If we created a new session, update the UI to show it
+          if (
+            newBroadcastSessionIDs.length > 0 &&
+            newBroadcastSessionIDs[0] !== props.broadcastSessionIDs[0]
+          ) {
+            route.navigate({
+              type: "session",
+              sessionID: newBroadcastSessionIDs[0], // Only updating the left pane
+              secondarySessionID: sessionID,        // Keeping right pane same
+            })
+          }
         }
 
         for (const targetID of newBroadcastSessionIDs) {
