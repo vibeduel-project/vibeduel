@@ -169,11 +169,20 @@ export function Session() {
 
   useKeyboard(
     (key) => {
+      // Check if any session is busy
+      const primaryStatus = sync.session.status(route.sessionID)
+      const secondaryStatus = route.secondarySessionID ? sync.session.status(route.secondarySessionID) : "idle"
+      if (primaryStatus !== "idle" || secondaryStatus !== "idle") {
+        return
+      }
+
       if (key.ctrl && key.name === "k") {
         setLeftColor(theme.success)
+        setRightColor(undefined)
       }
       if (key.ctrl && key.name === "l") {
         setRightColor(theme.error)
+        setLeftColor(undefined)
       }
     }
   )
