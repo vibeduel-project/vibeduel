@@ -181,7 +181,7 @@ export function Session() {
         setRightColor(undefined)
       }
       if (key.ctrl && key.name === "l") {
-        setRightColor(theme.error)
+        setRightColor(theme.success)
         setLeftColor(undefined)
       }
     }

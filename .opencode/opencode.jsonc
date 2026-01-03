@@ -11,9 +11,8 @@
     },
   },
   "permission": {
-    "bash": {
-      "ls foo": "ask",
-    },
+    "edit": "ask",
+    "bash": "ask"
   },
   "mcp": {
     "context7": {
