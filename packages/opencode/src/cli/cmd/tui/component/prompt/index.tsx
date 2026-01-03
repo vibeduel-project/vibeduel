@@ -586,6 +586,17 @@ export function Prompt(props: PromptProps) {
       promptModelWarning()
       return
     }
+
+    // Check if side is selected in split mode
+    if (props.broadcastSessionIDs && props.broadcastSessionIDs.length > 0 && !props.syncMode) {
+      toast.show({
+        message: "Please select a side (Ctrl+K for Left, Ctrl+L for Right)",
+        variant: "error",
+        duration: 3000
+      })
+      return
+    }
+
     const sessionID = props.sessionID
       ? props.sessionID
       : await (async () => {

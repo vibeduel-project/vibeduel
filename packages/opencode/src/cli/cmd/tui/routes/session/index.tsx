@@ -195,7 +195,8 @@ export function Session() {
 
   const syncMode = createMemo(() => {
     if (leftColor()) return "left-to-right"
-    return "right-to-left"
+    if (rightColor()) return "right-to-left"
+    return undefined
   })
 
   return (
