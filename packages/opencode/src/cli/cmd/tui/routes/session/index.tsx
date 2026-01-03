@@ -31,6 +31,7 @@ import { Locale } from "@/util/locale"
 import type { Tool } from "@/tool/tool"
 import type { ReadTool } from "@/tool/read"
 import type { WriteTool } from "@/tool/write"
+import { Log } from "@/util/log"
 import { BashTool } from "@/tool/bash"
 import type { GlobTool } from "@/tool/glob"
 import { TodoWriteTool } from "@/tool/todo"
@@ -1144,14 +1145,18 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
               <PermissionPrompt request={permissions()[0]} />
             </Show>
             <Prompt
-              visible={!session()?.parentID && permissions().length === 0}
+              visible={
+                (!session()?.parentID || (props.isSplit && !props.isPrimary)) &&
+                permissions().length === 0 &&
+                (!props.isSplit || !props.isPrimary)
+              }
               disabled={props.isSplit && props.isPrimary}
               broadcastSessionIDs={props.isSplit && !props.isPrimary ? [parentCtx.sessionID] : undefined}
               ref={(r) => {
                 prompt = r
-                // Only register promptRef if this is the "active" session (TODO: logic for active session)
-                // For now, let's just let the last one win or maybe we shouldn't register global ref for both?
-                // promptRef.set(r) 
+                if (!props.isSplit || !props.isPrimary) {
+                  promptRef.set(r)
+                }
               }}
               onSubmit={() => {
                 toBottom()
