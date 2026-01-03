@@ -1144,25 +1144,29 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
             <Show when={permissions().length > 0}>
               <PermissionPrompt request={permissions()[0]} />
             </Show>
-            <Prompt
-              visible={
+            <Show
+              when={
                 (!session()?.parentID || (props.isSplit && !props.isPrimary)) &&
                 permissions().length === 0 &&
                 (!props.isSplit || !props.isPrimary)
               }
-              disabled={props.isSplit && props.isPrimary}
-              broadcastSessionIDs={props.isSplit && !props.isPrimary ? [parentCtx.sessionID] : undefined}
-              ref={(r) => {
-                prompt = r
-                if (!props.isSplit || !props.isPrimary) {
-                  promptRef.set(r)
-                }
-              }}
-              onSubmit={() => {
-                toBottom()
-              }}
-              sessionID={props.sessionID}
-            />
+            >
+              <Prompt
+                visible={true}
+                disabled={props.isSplit && props.isPrimary}
+                broadcastSessionIDs={props.isSplit && !props.isPrimary ? [parentCtx.sessionID] : undefined}
+                ref={(r) => {
+                  prompt = r
+                  if (!props.isSplit || !props.isPrimary) {
+                    promptRef.set(r)
+                  }
+                }}
+                onSubmit={() => {
+                  toBottom()
+                }}
+                sessionID={props.sessionID}
+              />
+            </Show>
           </box>
           <Show when={!sidebarVisible()}>
             <Footer />
