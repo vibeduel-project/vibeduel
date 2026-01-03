@@ -23,6 +23,7 @@ import {
   MacOSScrollAccel,
   type ScrollAcceleration,
   TextAttributes,
+  type RGBA,
 } from "@opentui/core"
 import { Prompt, type PromptRef } from "@tui/component/prompt"
 import type { AssistantMessage, Part, ToolPart, UserMessage, TextPart, ReasoningPart } from "@opencode-ai/sdk/v2"
@@ -155,11 +156,33 @@ export function Session() {
   const [activeSessionID, setActiveSessionID] = createSignal(route.sessionID)
 
   // Ensure active session is valid (defaults to route.sessionID if invalid)
+  // Ensure active session is valid (defaults to route.sessionID if invalid)
   createEffect(() => {
     if (activeSessionID() !== route.sessionID && activeSessionID() !== route.secondarySessionID) {
       setActiveSessionID(route.sessionID)
     }
   })
+
+  // Button colors
+  const [leftColor, setLeftColor] = createSignal<string | RGBA | undefined>(undefined)
+  const [rightColor, setRightColor] = createSignal<string | RGBA | undefined>(undefined)
+
+  useKeyboard(
+    (key) => {
+      if (key.ctrl && key.name === "k") {
+        setLeftColor(theme.success)
+      }
+      if (key.ctrl && key.name === "l") {
+        setRightColor(theme.error)
+      }
+    }
+  )
+
+  /* Button colors handlers */
+  const resetColors = () => {
+    setLeftColor(undefined)
+    setRightColor(undefined)
+  }
 
   return (
     <context.Provider
@@ -194,27 +217,39 @@ export function Session() {
         setActiveSessionID,
       }}
     >
-      <box flexDirection="row">
-        <SessionPane
-          sessionID={route.sessionID}
-          width={paneWidth()}
-          isSplit={isSplit()}
-          isPrimary={true}
-        />
-        <Show when={route.secondarySessionID}>
+      <box flexDirection="column">
+        <box flexDirection="row" height={3} border={["bottom"]} borderColor={theme.border} paddingLeft={1} paddingRight={1} alignItems="center" gap={1}>
+          <box border={["left", "right", "top", "bottom"]} borderColor={leftColor() ?? theme.border} paddingLeft={1} paddingRight={1}>
+            <text fg={leftColor() ?? theme.text}>left</text>
+          </box>
+          <box border={["left", "right", "top", "bottom"]} borderColor={rightColor() ?? theme.border} paddingLeft={1} paddingRight={1}>
+            <text fg={rightColor() ?? theme.text}>right</text>
+          </box>
+        </box>
+        <box flexDirection="row">
           <SessionPane
-            sessionID={route.secondarySessionID!}
+            sessionID={route.sessionID}
             width={paneWidth()}
             isSplit={isSplit()}
-            isPrimary={false}
+            isPrimary={true}
+            onMessageSubmitted={resetColors}
           />
-        </Show>
+          <Show when={route.secondarySessionID}>
+            <SessionPane
+              sessionID={route.secondarySessionID!}
+              width={paneWidth()}
+              isSplit={isSplit()}
+              isPrimary={false}
+              onMessageSubmitted={resetColors}
+            />
+          </Show>
+        </box>
       </box>
     </context.Provider>
   )
 }
 
-function SessionPane(props: { sessionID: string; width: number; isSplit: boolean; isPrimary: boolean }) {
+function SessionPane(props: { sessionID: string; width: number; isSplit: boolean; isPrimary: boolean; onMessageSubmitted?: () => void }) {
   const sync = useSync()
   const kv = useKV()
   const { theme } = useTheme()
@@ -1163,6 +1198,7 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
                 }}
                 onSubmit={() => {
                   toBottom()
+                  props.onMessageSubmitted?.()
                 }}
                 sessionID={props.sessionID}
               />
