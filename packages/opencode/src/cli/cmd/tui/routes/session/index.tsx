@@ -12,6 +12,7 @@ import {
 } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import path from "path"
+import { appendFile } from "node:fs/promises"
 import { useRoute, useRouteData } from "@tui/context/route"
 import { useSync } from "@tui/context/sync"
 import { SplitBorder } from "@tui/component/border"
@@ -388,6 +389,35 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
   createEffect(() => {
     if (route.initialPrompt && prompt) {
       prompt.set(route.initialPrompt)
+    }
+  })
+
+  // Simple Logging for Prototype
+  const [lastLoggedID, setLastLoggedID] = createSignal<string | null>(null)
+  createEffect(() => {
+    const msg = lastAssistant()
+    // Check if message exists, is finished, and hasn't been logged yet
+    if (!msg || !msg.time.completed || msg.id === lastLoggedID()) return
+
+    const parts = sync.data.part[msg.id] ?? []
+    const text = parts
+      .filter(p => p.type === "text")
+      .map(p => p.text)
+      .join("")
+
+    // Determine filename based on side
+    if (props.side === "left" || props.side === "right") {
+      const filename = props.side === "left" ? "left.txt" : "right.txt"
+      const filepath = path.join("/Users/mark/opencode", filename)
+
+      const timestamp = new Date().toISOString()
+      const content = `[${timestamp}]\n${text}\n-------------------\n`
+
+      appendFile(filepath, content).catch(err => {
+        console.error(`Failed to write to ${filename}:`, err)
+      })
+
+      setLastLoggedID(msg.id)
     }
   })
 

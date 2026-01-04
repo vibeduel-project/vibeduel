@@ -35,6 +35,8 @@ import { ArgsProvider, useArgs, type Args } from "./context/args"
 import open from "open"
 import { writeHeapSnapshot } from "v8"
 import { PromptRefProvider, usePromptRef } from "./context/prompt"
+import { truncate } from "node:fs/promises"
+import path from "path"
 
 async function getTerminalBackgroundColor(): Promise<"dark" | "light"> {
   // can't set raw mode if not a TTY
@@ -223,6 +225,10 @@ function App() {
 
   const args = useArgs()
   onMount(() => {
+    // Wipe logs on app start
+    truncate(path.join("/Users/mark/opencode", "left.txt")).catch(() => { })
+    truncate(path.join("/Users/mark/opencode", "right.txt")).catch(() => { })
+
     batch(() => {
       if (args.agent) local.agent.set(args.agent)
       if (args.model) {
