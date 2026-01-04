@@ -146,7 +146,7 @@ export function Session() {
     return false
   })
 
-  const isSplit = createMemo(() => !!route.secondarySessionID)
+  const isSplit = createMemo(() => !!route.rightSessionID)
   const paneWidth = createMemo(() => {
     const fullWidth = dimensions().width
     return isSplit() ? Math.floor(fullWidth * 0.5) : fullWidth
@@ -158,7 +158,7 @@ export function Session() {
   // Ensure active session is valid (defaults to route.sessionID if invalid)
   // Ensure active session is valid (defaults to route.sessionID if invalid)
   createEffect(() => {
-    if (activeSessionID() !== route.sessionID && activeSessionID() !== route.secondarySessionID) {
+    if (activeSessionID() !== route.sessionID && activeSessionID() !== route.rightSessionID) {
       setActiveSessionID(route.sessionID)
     }
   })
@@ -170,9 +170,9 @@ export function Session() {
   useKeyboard(
     (key) => {
       // Check if any session is busy
-      const primaryStatus = sync.session.status(route.sessionID)
-      const secondaryStatus = route.secondarySessionID ? sync.session.status(route.secondarySessionID) : "idle"
-      if (primaryStatus !== "idle" || secondaryStatus !== "idle") {
+      const leftStatus = sync.session.status(route.sessionID)
+      const rightStatus = route.rightSessionID ? sync.session.status(route.rightSessionID) : "idle"
+      if (leftStatus !== "idle" || rightStatus !== "idle") {
         return
       }
 
@@ -246,16 +246,16 @@ export function Session() {
             sessionID={route.sessionID}
             width={paneWidth()}
             isSplit={isSplit()}
-            isPrimary={true}
+            side="left"
             onMessageSubmitted={resetColors}
             syncMode={syncMode()}
           />
-          <Show when={route.secondarySessionID}>
+          <Show when={route.rightSessionID}>
             <SessionPane
-              sessionID={route.secondarySessionID!}
+              sessionID={route.rightSessionID!}
               width={paneWidth()}
               isSplit={isSplit()}
-              isPrimary={false}
+              side="right"
               onMessageSubmitted={resetColors}
               syncMode={syncMode()}
             />
@@ -266,7 +266,7 @@ export function Session() {
   )
 }
 
-function SessionPane(props: { sessionID: string; width: number; isSplit: boolean; isPrimary: boolean; onMessageSubmitted?: () => void; syncMode?: "left-to-right" | "right-to-left" }) {
+function SessionPane(props: { sessionID: string; width: number; isSplit: boolean; side: "left" | "right"; onMessageSubmitted?: () => void; syncMode?: "left-to-right" | "right-to-left" }) {
   const sync = useSync()
   const kv = useKV()
   const { theme } = useTheme()
@@ -1198,19 +1198,19 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
             </Show>
             <Show
               when={
-                (!session()?.parentID || (props.isSplit && !props.isPrimary)) &&
+                (!session()?.parentID || (props.isSplit && props.side === "right")) &&
                 permissions().length === 0 &&
-                (!props.isSplit || !props.isPrimary)
+                (!props.isSplit || props.side === "right")
               }
             >
               <Prompt
                 visible={true}
-                disabled={props.isSplit && props.isPrimary}
-                broadcastSessionIDs={props.isSplit && !props.isPrimary ? [parentCtx.sessionID] : undefined}
+                disabled={props.isSplit && props.side === "left"}
+                broadcastSessionIDs={props.isSplit && props.side === "right" ? [parentCtx.sessionID] : undefined}
                 syncMode={props.syncMode}
                 ref={(r) => {
                   prompt = r
-                  if (!props.isSplit || !props.isPrimary) {
+                  if (!props.isSplit || props.side === "right") {
                     promptRef.set(r)
                   }
                 }}

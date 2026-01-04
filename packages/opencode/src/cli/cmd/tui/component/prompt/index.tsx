@@ -698,7 +698,7 @@ export function Prompt(props: PromptProps) {
                 route.navigate({
                   type: "session",
                   sessionID: leftID,
-                  secondarySessionID: newRightID,
+                  rightSessionID: newRightID,
                 })
               }
             } catch (e) {
@@ -731,7 +731,7 @@ export function Prompt(props: PromptProps) {
             route.navigate({
               type: "session",
               sessionID: newBroadcastSessionIDs[0], // Only updating the left pane
-              secondarySessionID: sessionID,        // Keeping right pane same
+              rightSessionID: sessionID,            // Keeping right pane same
             })
           }
         }

@@ -108,8 +108,8 @@ export function Home() {
             }}
             hint={Hint}
             onSubmit={async (sessionID, promptInfo) => {
-              // Create secondary session
-              const secondarySessionID = await sdk.client.session.create({}).then((x) => x.data!.id)
+              // Create right session
+              const rightSessionID = await sdk.client.session.create({}).then((x) => x.data!.id)
 
               const selectedModel = local.model.current()
               const variant = local.model.variant.current()
@@ -118,9 +118,9 @@ export function Home() {
               // Filter out text parts (pasted content) since they're expanded inline
               const nonTextParts = promptInfo.parts.filter((part) => part.type !== "text")
 
-              // Send same prompt to secondary session
+              // Send same prompt to right session
               sdk.client.session.prompt({
-                sessionID: secondarySessionID,
+                sessionID: rightSessionID,
                 ...selectedModel!,
                 messageID,
                 agent: local.agent.current().name,
@@ -142,7 +142,7 @@ export function Home() {
               navigate({
                 type: "session",
                 sessionID,
-                secondarySessionID,
+                rightSessionID,
               })
             }}
           />
