@@ -96,7 +96,7 @@ function TextBody(props: { title: string; description?: string; icon?: string })
   )
 }
 
-export function PermissionPrompt(props: { request: PermissionRequest }) {
+export function PermissionPrompt(props: { request: PermissionRequest; active: boolean }) {
   const sdk = useSDK()
   const sync = useSync()
   const [store, setStore] = createStore({
@@ -145,6 +145,7 @@ export function PermissionPrompt(props: { request: PermissionRequest }) {
             </Switch>
           }
           options={{ confirm: "Confirm", cancel: "Cancel" }}
+          active={props.active}
           onSelect={(option) => {
             setStore("always", false)
             if (option === "cancel") return
@@ -210,6 +211,7 @@ export function PermissionPrompt(props: { request: PermissionRequest }) {
             </Switch>
           }
           options={{ once: "Allow once", always: "Allow always", reject: "Reject" }}
+          active={props.active}
           onSelect={(option) => {
             if (option === "always") {
               setStore("always", true)
@@ -231,6 +233,7 @@ function Prompt<const T extends Record<string, string>>(props: {
   body: JSX.Element
   options: T
   onSelect: (option: keyof T) => void
+  active: boolean
 }) {
   const { theme } = useTheme()
   const keys = Object.keys(props.options) as (keyof T)[]
@@ -239,6 +242,8 @@ function Prompt<const T extends Record<string, string>>(props: {
   })
 
   useKeyboard((evt) => {
+    if (!props.active) return
+
     if (evt.name === "left" || evt.name == "h") {
       evt.preventDefault()
       const idx = keys.indexOf(store.selected)

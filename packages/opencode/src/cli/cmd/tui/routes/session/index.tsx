@@ -267,6 +267,7 @@ export function Session() {
             side="left"
             onMessageSubmitted={resetColors}
             syncMode={syncMode()}
+            controlSide={controlSide()}
           />
           <Show when={route.rightSessionID}>
             <SessionPane
@@ -276,6 +277,7 @@ export function Session() {
               side="right"
               onMessageSubmitted={resetColors}
               syncMode={syncMode()}
+              controlSide={controlSide()}
             />
           </Show>
         </box>
@@ -284,7 +286,7 @@ export function Session() {
   )
 }
 
-function SessionPane(props: { sessionID: string; width: number; isSplit: boolean; side: "left" | "right"; onMessageSubmitted?: () => void; syncMode?: "left-to-right" | "right-to-left" }) {
+function SessionPane(props: { sessionID: string; width: number; isSplit: boolean; side: "left" | "right"; onMessageSubmitted?: () => void; syncMode?: "left-to-right" | "right-to-left"; controlSide: "left" | "right" }) {
   const sync = useSync()
   const kv = useKV()
   const { theme } = useTheme()
@@ -1212,7 +1214,10 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
           </scrollbox>
           <box flexShrink={0}>
             <Show when={permissions().length > 0}>
-              <PermissionPrompt request={permissions()[0]} />
+              <PermissionPrompt
+                request={permissions()[0]}
+                active={props.controlSide === props.side}
+              />
             </Show>
             <Show
               when={
