@@ -167,8 +167,15 @@ export function Session() {
   const [leftColor, setLeftColor] = createSignal<string | RGBA | undefined>(undefined)
   const [rightColor, setRightColor] = createSignal<string | RGBA | undefined>(undefined)
 
+  const [controlSide, setControlSide] = createSignal<"left" | "right">("right")
+
   useKeyboard(
     (key) => {
+      // Toggle Control Side (Always active)
+      if (key.ctrl && key.name === "o") {
+        setControlSide((prev) => (prev === "left" ? "right" : "left"))
+      }
+
       // Check if any session is busy
       const leftStatus = sync.session.status(route.sessionID)
       const rightStatus = route.rightSessionID ? sync.session.status(route.rightSessionID) : "idle"
@@ -239,6 +246,17 @@ export function Session() {
           </box>
           <box border={["left", "right", "top", "bottom"]} borderColor={rightColor() ?? theme.border} paddingLeft={1} paddingRight={1}>
             <text fg={rightColor() ?? theme.text}>right</text>
+          </box>
+          <box
+            marginLeft={2}
+            border={["left", "right", "top", "bottom"]}
+            borderColor={controlSide() === "left" ? theme.success : theme.error}
+            paddingLeft={1}
+            paddingRight={1}
+          >
+            <text fg={controlSide() === "left" ? theme.success : theme.error}>
+              {controlSide()}
+            </text>
           </box>
         </box>
         <box flexDirection="row">
