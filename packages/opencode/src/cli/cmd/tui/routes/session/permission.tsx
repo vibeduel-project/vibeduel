@@ -1,5 +1,5 @@
 import { createStore } from "solid-js/store"
-import { createMemo, For, Match, Show, Switch } from "solid-js"
+import { createMemo, createEffect, For, Match, Show, Switch } from "solid-js"
 import { useKeyboard, useTerminalDimensions, type JSX } from "@opentui/solid"
 import { useTheme } from "../../context/theme"
 import type { PermissionRequest } from "@opencode-ai/sdk/v2"
@@ -7,6 +7,7 @@ import { useSDK } from "../../context/sdk"
 import { SplitBorder } from "../../component/border"
 import { useSync } from "../../context/sync"
 import path from "path"
+import { appendFile } from "node:fs/promises"
 import { LANGUAGE_EXTENSIONS } from "@/lsp/language"
 import { Locale } from "@/util/locale"
 
@@ -22,8 +23,19 @@ function filetype(input?: string) {
   if (!input) return "none"
   const ext = path.extname(input)
   const language = LANGUAGE_EXTENSIONS[ext]
+
+
   if (["typescriptreact", "javascriptreact", "javascript"].includes(language)) return "typescript"
   return language
+}
+
+function logToSide(side: "left" | "right", text: string) {
+  if (!side) return
+  const filename = side === "left" ? "left.txt" : "right.txt"
+  const filepath = path.join("/Users/mark/opencode", filename)
+  const timestamp = new Date().toISOString()
+  const content = `[${timestamp}]\n${text}\n-------------------\n`
+  appendFile(filepath, content).catch(console.error)
 }
 
 function EditBody(props: { request: PermissionRequest }) {
@@ -96,7 +108,7 @@ function TextBody(props: { title: string; description?: string; icon?: string })
   )
 }
 
-export function PermissionPrompt(props: { request: PermissionRequest; active: boolean }) {
+export function PermissionPrompt(props: { request: PermissionRequest; active: boolean; side: "left" | "right" }) {
   const sdk = useSDK()
   const sync = useSync()
   const [store, setStore] = createStore({
@@ -116,6 +128,10 @@ export function PermissionPrompt(props: { request: PermissionRequest; active: bo
   })
 
   const { theme } = useTheme()
+
+  createEffect(() => {
+    logToSide(props.side, `Permission Request: ${props.request.permission} (${props.request.id})`)
+  })
 
   return (
     <Switch>
@@ -147,6 +163,7 @@ export function PermissionPrompt(props: { request: PermissionRequest; active: bo
           options={{ confirm: "Confirm", cancel: "Cancel" }}
           active={props.active}
           onSelect={(option) => {
+            logToSide(props.side, `User Response: ${option} (always flow)`)
             setStore("always", false)
             if (option === "cancel") return
             sdk.client.permission.reply({
@@ -213,6 +230,7 @@ export function PermissionPrompt(props: { request: PermissionRequest; active: bo
           options={{ once: "Allow once", always: "Allow always", reject: "Reject" }}
           active={props.active}
           onSelect={(option) => {
+            logToSide(props.side, `User Response: ${option}`)
             if (option === "always") {
               setStore("always", true)
               return

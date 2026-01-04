@@ -1247,6 +1247,7 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
               <PermissionPrompt
                 request={permissions()[0]}
                 active={props.controlSide === props.side}
+                side={props.side}
               />
             </Show>
             <Show
