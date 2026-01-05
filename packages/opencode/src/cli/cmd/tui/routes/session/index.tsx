@@ -50,6 +50,17 @@ import { useKeybind } from "@tui/context/keybind"
 import { Header } from "./header"
 import { parsePatch } from "diff"
 import { useDialog } from "../../ui/dialog"
+
+
+
+function logToSide(side: "left" | "right", text: string) {
+  if (!side) return
+  const filename = side === "left" ? "left.txt" : "right.txt"
+  const filepath = path.join("/Users/mark/opencode", filename)
+  const timestamp = new Date().toISOString()
+  const content = `[${timestamp}]\n${text}\n-------------------\n`
+  appendFile(filepath, content).catch(console.error)
+}
 import { TodoItem } from "../../component/todo-item"
 import { DialogMessage } from "./dialog-message"
 import type { PromptInfo } from "../../component/prompt/history"
@@ -1123,6 +1134,28 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
   // snap to bottom when session changes
   createEffect(on(() => route.sessionID, toBottom))
 
+  const [trackedActions, setTrackedActions] = createSignal<{ toolCallID: string; messageID: string; startTime: number }[]>([])
+
+  createEffect(() => {
+    const actions = trackedActions()
+    if (actions.length === 0) return
+
+    actions.forEach((action) => {
+      const parts = sync.data.part[action.messageID] || []
+      const toolPart = parts.find(p => p.type === "tool" && p.callID === action.toolCallID) as ToolPart | undefined
+      if (!toolPart) return
+
+      const status = toolPart.state.status
+      if (status === "completed" || status === "error") {
+        const duration = (Date.now() - action.startTime) / 1000
+        logToSide(props.side, `Action ${status === "completed" ? "completed" : "failed"} in ${duration.toFixed(2)}s`)
+
+        // Remove from tracking
+        setTrackedActions(prev => prev.filter(a => a.toolCallID !== action.toolCallID))
+      }
+    })
+  })
+
   return (
     <context.Provider value={ctx}>
       <box width={props.width} paddingBottom={1} paddingTop={1} paddingLeft={2} paddingRight={2} gap={1}>
@@ -1251,6 +1284,7 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
                 active={props.controlSide === props.side}
                 side={props.side}
                 otherSessionID={props.otherSessionID}
+                onPermissionHandled={(action) => setTrackedActions(prev => [...prev, action])}
               />
             </Show>
             <Show

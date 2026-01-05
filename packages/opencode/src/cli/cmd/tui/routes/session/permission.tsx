@@ -110,7 +110,13 @@ function TextBody(props: { title: string; description?: string; icon?: string })
   )
 }
 
-export function PermissionPrompt(props: { request: PermissionRequest; active: boolean; side: "left" | "right"; otherSessionID?: string }) {
+export function PermissionPrompt(props: {
+  request: PermissionRequest
+  active: boolean
+  side: "left" | "right"
+  otherSessionID?: string
+  onPermissionHandled?: (action: { toolCallID: string; messageID: string; startTime: number }) => void
+}) {
   const sdk = useSDK()
   const sync = useSync()
   const [store, setStore] = createStore({
@@ -194,6 +200,14 @@ export function PermissionPrompt(props: { request: PermissionRequest; active: bo
               }
             }
 
+            if (props.onPermissionHandled && props.request.tool) {
+              props.onPermissionHandled({
+                toolCallID: props.request.tool.callID,
+                messageID: props.request.tool.messageID,
+                startTime: Date.now()
+              })
+            }
+
             sdk.client.permission.reply({
               reply: "always",
               requestID: props.request.id,
@@ -271,6 +285,14 @@ export function PermissionPrompt(props: { request: PermissionRequest; active: bo
                 logToSide(props.side, `Auto-rejecting permission on other side (${props.otherSessionID}): ${p.id}`)
                 sdk.client.permission.reply({ reply: "reject", requestID: p.id })
               }
+            }
+
+            if (props.onPermissionHandled && props.request.tool && (option === "once" || option === "always" || option === "confirm")) {
+              props.onPermissionHandled({
+                toolCallID: props.request.tool.callID,
+                messageID: props.request.tool.messageID,
+                startTime: Date.now()
+              })
             }
 
             sdk.client.permission.reply({
