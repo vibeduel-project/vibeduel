@@ -24,3 +24,5 @@ target
 # Local dev files
 opencode-dev
 logs/
+left.txt
+right.txt

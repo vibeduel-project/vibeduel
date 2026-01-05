@@ -1,5 +1,5 @@
 import { createStore } from "solid-js/store"
-import { createMemo, createEffect, For, Match, Show, Switch } from "solid-js"
+import { createMemo, createEffect, onCleanup, For, Match, Show, Switch } from "solid-js"
 import { useKeyboard, useTerminalDimensions, type JSX } from "@opentui/solid"
 import { useTheme } from "../../context/theme"
 import type { PermissionRequest } from "@opencode-ai/sdk/v2"
@@ -37,6 +37,8 @@ function logToSide(side: "left" | "right", text: string) {
   const content = `[${timestamp}]\n${text}\n-------------------\n`
   appendFile(filepath, content).catch(console.error)
 }
+
+const promptStartTimes: Record<string, number> = {}
 
 function EditBody(props: { request: PermissionRequest }) {
   const { theme, syntax } = useTheme()
@@ -130,7 +132,23 @@ export function PermissionPrompt(props: { request: PermissionRequest; active: bo
   const { theme } = useTheme()
 
   createEffect(() => {
+    const now = Date.now()
+    promptStartTimes[props.side] = now
+
     logToSide(props.side, `Permission Request: ${props.request.permission} (${props.request.id})`)
+
+    const otherSide = props.side === "left" ? "right" : "left"
+    const otherStart = promptStartTimes[otherSide]
+
+    if (otherStart) {
+      const diff = (now - otherStart) / 1000
+      logToSide(props.side, `Other side (${otherSide}) displayed permission prompt ${diff.toFixed(2)}s earlier.`)
+      logToSide(otherSide, `Other side (${props.side}) displayed permission prompt ${diff.toFixed(2)}s later.`)
+    }
+  })
+
+  onCleanup(() => {
+    delete promptStartTimes[props.side]
   })
 
   return (
