@@ -110,7 +110,7 @@ function TextBody(props: { title: string; description?: string; icon?: string })
   )
 }
 
-export function PermissionPrompt(props: { request: PermissionRequest; active: boolean; side: "left" | "right" }) {
+export function PermissionPrompt(props: { request: PermissionRequest; active: boolean; side: "left" | "right"; otherSessionID?: string }) {
   const sdk = useSDK()
   const sync = useSync()
   const [store, setStore] = createStore({
@@ -184,6 +184,16 @@ export function PermissionPrompt(props: { request: PermissionRequest; active: bo
             logToSide(props.side, `User Response: ${option} (always flow)`)
             setStore("always", false)
             if (option === "cancel") return
+
+            // Auto-reject other side
+            if (props.otherSessionID) {
+              const listing = sync.data.permission[props.otherSessionID] || []
+              for (const p of listing) {
+                logToSide(props.side, `Auto-rejecting permission on other side (${props.otherSessionID}): ${p.id}`)
+                sdk.client.permission.reply({ reply: "reject", requestID: p.id })
+              }
+            }
+
             sdk.client.permission.reply({
               reply: "always",
               requestID: props.request.id,
@@ -253,6 +263,16 @@ export function PermissionPrompt(props: { request: PermissionRequest; active: bo
               setStore("always", true)
               return
             }
+
+            // Auto-reject other side
+            if (props.otherSessionID && (option === "once" || option === "reject")) {
+              const listing = sync.data.permission[props.otherSessionID] || []
+              for (const p of listing) {
+                logToSide(props.side, `Auto-rejecting permission on other side (${props.otherSessionID}): ${p.id}`)
+                sdk.client.permission.reply({ reply: "reject", requestID: p.id })
+              }
+            }
+
             sdk.client.permission.reply({
               reply: option as "once" | "reject",
               requestID: props.request.id,

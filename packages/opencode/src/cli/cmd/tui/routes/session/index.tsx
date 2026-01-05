@@ -269,6 +269,7 @@ export function Session() {
             onMessageSubmitted={resetColors}
             syncMode={syncMode()}
             controlSide={controlSide()}
+            otherSessionID={route.rightSessionID}
           />
           <Show when={route.rightSessionID}>
             <SessionPane
@@ -279,6 +280,7 @@ export function Session() {
               onMessageSubmitted={resetColors}
               syncMode={syncMode()}
               controlSide={controlSide()}
+              otherSessionID={route.sessionID}
             />
           </Show>
         </box>
@@ -287,7 +289,7 @@ export function Session() {
   )
 }
 
-function SessionPane(props: { sessionID: string; width: number; isSplit: boolean; side: "left" | "right"; onMessageSubmitted?: () => void; syncMode?: "left-to-right" | "right-to-left"; controlSide: "left" | "right" }) {
+function SessionPane(props: { sessionID: string; width: number; isSplit: boolean; side: "left" | "right"; onMessageSubmitted?: () => void; syncMode?: "left-to-right" | "right-to-left"; controlSide: "left" | "right"; otherSessionID?: string }) {
   const sync = useSync()
   const kv = useKV()
   const { theme } = useTheme()
@@ -1248,6 +1250,7 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
                 request={permissions()[0]}
                 active={props.controlSide === props.side}
                 side={props.side}
+                otherSessionID={props.otherSessionID}
               />
             </Show>
             <Show
