@@ -1,33 +1,12 @@
-[2026-01-05T22:30:47.693Z]
-Permission Request: bash (per_b9048c8760019GKUTbEDw6DiOC)
+[2026-01-05T23:09:14.130Z]
+Permission Request: bash (per_b906bfa08001YOoHxEdHR2IlEQ)
 -------------------
-[2026-01-05T22:30:47.694Z]
-Other side (right) displayed permission prompt 0.00s later.
+[2026-01-05T23:09:21.188Z]
+Other side (right) displayed permission prompt 7.06s later.
 -------------------
-[2026-01-05T22:30:55.630Z]
+[2026-01-05T23:09:23.323Z]
 
 -------------------
-[2026-01-05T22:31:43.581Z]
-Yes, conda is installed (version 23.11.0)
--------------------
-[2026-01-05T22:31:46.276Z]
-Other side (right) displayed permission prompt 0.04s earlier.
--------------------
-[2026-01-05T22:31:46.276Z]
-Permission Request: bash (per_b9049ad62001GltwdpzYlv9AzT)
--------------------
-[2026-01-05T22:31:51.925Z]
-User Response: once
--------------------
-[2026-01-05T22:31:51.925Z]
-Auto-rejecting permission on other side (ses_46fb74302ffejw3NVUTPTJOt3l): per_b9049ad34001IXJSKgSey7axN7
--------------------
-[2026-01-05T22:31:51.964Z]
-Action completed in 0.04s
--------------------
-[2026-01-05T22:31:51.984Z]
-
--------------------
-[2026-01-05T22:31:54.422Z]
-Yes, Python is installed (version 3.10.13)
+[2026-01-05T23:09:25.908Z]
+Yes, conda version 23.11.0 is installed.
 -------------------

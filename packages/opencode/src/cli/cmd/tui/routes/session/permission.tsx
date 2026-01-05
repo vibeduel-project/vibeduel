@@ -287,7 +287,7 @@ export function PermissionPrompt(props: {
               }
             }
 
-            if (props.onPermissionHandled && props.request.tool && (option === "once" || option === "always" || option === "confirm")) {
+            if (props.onPermissionHandled && props.request.tool && option === "once") {
               props.onPermissionHandled({
                 toolCallID: props.request.tool.callID,
                 messageID: props.request.tool.messageID,
