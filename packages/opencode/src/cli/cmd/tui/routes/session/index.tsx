@@ -181,6 +181,10 @@ export function Session() {
   const [rightColor, setRightColor] = createSignal<string | RGBA | undefined>(undefined)
 
   const [controlSide, setControlSide] = createSignal<"left" | "right">("right")
+  const [scrollToBottomLeft, setScrollToBottomLeft] = createSignal<(() => void) | undefined>(undefined)
+  const [scrollToBottomRight, setScrollToBottomRight] = createSignal<(() => void) | undefined>(undefined)
+  const [hoverLeftChoice, setHoverLeftChoice] = createSignal(false)
+  const [hoverRightChoice, setHoverRightChoice] = createSignal(false)
 
   useKeyboard(
     (key) => {
@@ -204,6 +208,17 @@ export function Session() {
         setRightColor(theme.success)
         setLeftColor(undefined)
       }
+
+      if (isSplit() && promptDisabled()) {
+        if (key.name === "left") {
+          setLeftColor(theme.success)
+          setRightColor(undefined)
+        }
+        if (key.name === "right") {
+          setRightColor(theme.success)
+          setLeftColor(undefined)
+        }
+      }
     }
   )
 
@@ -217,6 +232,35 @@ export function Session() {
     if (leftColor()) return "left-to-right"
     if (rightColor()) return "right-to-left"
     return undefined
+  })
+
+  const promptSessionID = createMemo(() => route.rightSessionID ?? route.sessionID)
+  const promptSession = createMemo(() => sync.session.get(promptSessionID()))
+  const promptPermissions = createMemo(() => {
+    const s = promptSession()
+    if (!s) return []
+    if (s.parentID) return sync.data.permission[promptSessionID()] ?? []
+    const parentID = s.parentID ?? s.id
+    const children = sync.data.session
+      .filter((x) => x.parentID === parentID || x.id === parentID)
+      .toSorted((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    return children.flatMap((x) => sync.data.permission[x.id] ?? [])
+  })
+
+  const showPrompt = createMemo(() => {
+    const s = promptSession()
+    if (!route.rightSessionID && s?.parentID) return false
+    return promptPermissions().length === 0
+  })
+  const promptDisabled = createMemo(() => isSplit() && !syncMode())
+
+  const promptMaxWidth = createMemo(() => Math.min(96, Math.max(0, dimensions().width - 4)))
+
+  let prompt: PromptRef
+  createEffect(() => {
+    if (route.initialPrompt && prompt) {
+      prompt.set(route.initialPrompt)
+    }
   })
 
   return (
@@ -272,28 +316,90 @@ export function Session() {
             </text>
           </box>
         </box>
-        <box flexDirection="row">
-          <SessionPane
-            sessionID={route.sessionID}
-            width={paneWidth()}
-            isSplit={isSplit()}
-            side="left"
-            onMessageSubmitted={resetColors}
-            syncMode={syncMode()}
-            controlSide={controlSide()}
-            otherSessionID={route.rightSessionID}
-          />
-          <Show when={route.rightSessionID}>
+        <box flexDirection="column" flexGrow={1}>
+          <box flexDirection="row" flexGrow={1}>
             <SessionPane
-              sessionID={route.rightSessionID!}
+              sessionID={route.sessionID}
               width={paneWidth()}
               isSplit={isSplit()}
-              side="right"
-              onMessageSubmitted={resetColors}
-              syncMode={syncMode()}
+              side="left"
               controlSide={controlSide()}
-              otherSessionID={route.sessionID}
+              otherSessionID={route.rightSessionID}
+              onScrollToBottom={(fn) => setScrollToBottomLeft(() => fn)}
             />
+            <Show when={route.rightSessionID}>
+              <SessionPane
+                sessionID={route.rightSessionID!}
+                width={paneWidth()}
+                isSplit={isSplit()}
+                side="right"
+                controlSide={controlSide()}
+                otherSessionID={route.sessionID}
+                onScrollToBottom={(fn) => setScrollToBottomRight(() => fn)}
+              />
+            </Show>
+          </box>
+          <Show when={showPrompt()}>
+            <box flexShrink={0} justifyContent="center" alignItems="center" paddingLeft={2} paddingRight={2} paddingBottom={1}>
+              <box width="100%" maxWidth={promptMaxWidth()}>
+                <Show when={promptDisabled()}>
+                  <box flexDirection="row" justifyContent="center" gap={1} paddingBottom={1}>
+                    <box
+                      border={["left", "right", "top", "bottom"]}
+                      borderColor={leftColor() ?? (hoverLeftChoice() ? theme.text : theme.border)}
+                      paddingLeft={1}
+                      paddingRight={1}
+                      onMouseEnter={() => setHoverLeftChoice(true)}
+                      onMouseLeave={() => setHoverLeftChoice(false)}
+                      onMouseUp={() => {
+                        const leftStatus = sync.session.status(route.sessionID)
+                        const rightStatus = route.rightSessionID ? sync.session.status(route.rightSessionID) : "idle"
+                        if (leftStatus !== "idle" || rightStatus !== "idle") return
+                        setLeftColor(theme.success)
+                        setRightColor(undefined)
+                      }}
+                    >
+                      <text fg={leftColor() ?? theme.text}>Left</text>
+                    </box>
+                    <box
+                      border={["left", "right", "top", "bottom"]}
+                      borderColor={rightColor() ?? (hoverRightChoice() ? theme.text : theme.border)}
+                      paddingLeft={1}
+                      paddingRight={1}
+                      onMouseEnter={() => setHoverRightChoice(true)}
+                      onMouseLeave={() => setHoverRightChoice(false)}
+                      onMouseUp={() => {
+                        const leftStatus = sync.session.status(route.sessionID)
+                        const rightStatus = route.rightSessionID ? sync.session.status(route.rightSessionID) : "idle"
+                        if (leftStatus !== "idle" || rightStatus !== "idle") return
+                        setRightColor(theme.success)
+                        setLeftColor(undefined)
+                      }}
+                    >
+                      <text fg={rightColor() ?? theme.text}>Right</text>
+                    </box>
+                    <text fg={theme.textMuted}>select side (←/→)</text>
+                  </box>
+                </Show>
+                <Prompt
+                  visible={true}
+                  broadcastSessionIDs={isSplit() ? [route.sessionID] : undefined}
+                  syncMode={syncMode()}
+                  disabled={promptDisabled()}
+                  focused={!promptDisabled()}
+                  ref={(r) => {
+                    prompt = r
+                    promptRef.set(r)
+                  }}
+                  onSubmit={() => {
+                    const scrollFn = isSplit() ? scrollToBottomRight() : scrollToBottomLeft()
+                    scrollFn?.()
+                    resetColors()
+                  }}
+                  sessionID={promptSessionID()}
+                />
+              </box>
+            </box>
           </Show>
         </box>
       </box>
@@ -301,7 +407,7 @@ export function Session() {
   )
 }
 
-function SessionPane(props: { sessionID: string; width: number; isSplit: boolean; side: "left" | "right"; onMessageSubmitted?: () => void; syncMode?: "left-to-right" | "right-to-left"; controlSide: "left" | "right"; otherSessionID?: string }) {
+function SessionPane(props: { sessionID: string; width: number; isSplit: boolean; side: "left" | "right"; controlSide: "left" | "right"; otherSessionID?: string; onScrollToBottom?: (fn: () => void) => void }) {
   const sync = useSync()
   const kv = useKV()
   const { theme } = useTheme()
@@ -400,13 +506,6 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
   const toast = useToast()
   const sdk = useSDK()
 
-  // Handle initial prompt from fork
-  createEffect(() => {
-    if (route.initialPrompt && prompt) {
-      prompt.set(route.initialPrompt)
-    }
-  })
-
   // Simple Logging for Prototype
   const [lastLoggedID, setLastLoggedID] = createSignal<string | null>(null)
   createEffect(() => {
@@ -437,7 +536,6 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
   })
 
   let scroll: ScrollBoxRenderable
-  let prompt: PromptRef
   const keybind = useKeybind()
 
   // Helper: Find next visible message boundary in direction
@@ -559,7 +657,7 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
               if (child) scroll.scrollBy(child.y - scroll.y - 1)
             }}
             sessionID={route.sessionID}
-            setPrompt={(promptInfo) => prompt.set(promptInfo)}
+            setPrompt={(promptInfo) => promptRef.current?.set(promptInfo)}
           />
         ))
       },
@@ -642,7 +740,7 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
             toBottom()
           })
         const parts = sync.data.part[message.id]
-        prompt.set(
+        promptRef.current?.set(
           parts.reduce(
             (agg, part) => {
               if (part.type === "text") {
@@ -672,7 +770,7 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
           sdk.client.session.unrevert({
             sessionID: route.sessionID,
           })
-          prompt.set({ input: "", parts: [] })
+          promptRef.current?.set({ input: "", parts: [] })
           return
         }
         sdk.client.session.revert({
@@ -1197,7 +1295,10 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
             <Header />
           </Show>
           <scrollbox
-            ref={(r) => (scroll = r)}
+            ref={(r) => {
+              scroll = r
+              props.onScrollToBottom?.(toBottom)
+            }}
             viewportOptions={{
               paddingRight: showScrollbar() ? 1 : 0,
             }}
@@ -1290,7 +1391,7 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
                           <DialogMessage
                             messageID={message.id}
                             sessionID={props.sessionID}
-                            setPrompt={(promptInfo) => prompt.set(promptInfo)}
+                            setPrompt={(promptInfo) => promptRef.current?.set(promptInfo)}
                           />
                         ))
                       }}
@@ -1318,31 +1419,6 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
                 side={props.side}
                 otherSessionID={props.otherSessionID}
                 onPermissionHandled={(action) => setTrackedActions(prev => [...prev, action])}
-              />
-            </Show>
-            <Show
-              when={
-                (!session()?.parentID || (props.isSplit && props.side === "right")) &&
-                permissions().length === 0 &&
-                (!props.isSplit || props.side === "right")
-              }
-            >
-              <Prompt
-                visible={true}
-                disabled={props.isSplit && props.side === "left"}
-                broadcastSessionIDs={props.isSplit && props.side === "right" ? [parentCtx.sessionID] : undefined}
-                syncMode={props.syncMode}
-                ref={(r) => {
-                  prompt = r
-                  if (!props.isSplit || props.side === "right") {
-                    promptRef.set(r)
-                  }
-                }}
-                onSubmit={() => {
-                  toBottom()
-                  props.onMessageSubmitted?.()
-                }}
-                sessionID={props.sessionID}
               />
             </Show>
           </box>
