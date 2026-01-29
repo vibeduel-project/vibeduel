@@ -740,9 +740,9 @@ export namespace Provider {
               model.provider?.npm ??
               provider.npm ??
               existingModel?.api.npm ??
-              ModelsDev[providerID]?.npm ??
+              database[providerID]?.models?.[modelID]?.api?.npm ??
               "@ai-sdk/openai-compatible",
-            url: provider?.api ?? existingModel?.api.url ?? ModelsDev[providerID]?.api,
+            url: provider?.api ?? existingModel?.api.url ?? database[providerID]?.options?.baseURL,
           },
           status: model.status ?? existingModel?.status ?? "active",
           name,
