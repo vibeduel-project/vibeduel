@@ -38,6 +38,7 @@ export type PromptProps = {
   disabled?: boolean
   focused?: boolean
   broadcastSessionIDs?: string[]
+  compareMode?: boolean
   syncMode?: 'left-to-right' | 'right-to-left'
   onSubmit?: (sessionID: string, prompt: PromptInfo) => void
   ref?: (ref: PromptRef) => void
@@ -267,7 +268,6 @@ export function Prompt(props: PromptProps) {
         category: "Session",
         onSelect: (dialog) => {
           if (autocomplete.visible) return
-          if (!input.focused) return
           // TODO: this should be its own command
           if (store.mode === "shell") {
             setStore("mode", "normal")
@@ -588,7 +588,7 @@ export function Prompt(props: PromptProps) {
     }
 
     // Check if side is selected in split mode
-    if (props.broadcastSessionIDs && props.broadcastSessionIDs.length > 0 && !props.syncMode) {
+    if (props.broadcastSessionIDs && props.broadcastSessionIDs.length > 0 && !props.syncMode && !props.compareMode) {
       toast.show({
         message: "Please select a side (Ctrl+K for Left, Ctrl+L for Right)",
         variant: "error",
@@ -683,66 +683,77 @@ export function Prompt(props: PromptProps) {
       })
 
       if (props.broadcastSessionIDs) {
-        const newBroadcastSessionIDs: string[] = []
-
-        if (props.syncMode === 'left-to-right') {
-          // Sync Left -> Right (Overwrite Right with Left)
-          for (const leftID of props.broadcastSessionIDs) {
-            newBroadcastSessionIDs.push(leftID)
-            try {
-              const fork = await sdk.client.session.fork({ sessionID: leftID })
-              if (fork.data) {
-                const newRightID = fork.data.id
-                newBroadcastSessionIDs.push(newRightID)
-
-                route.navigate({
-                  type: "session",
-                  sessionID: leftID,
-                  rightSessionID: newRightID,
-                })
-              }
-            } catch (e) {
-              Log.Default.error("Error forking session for broadcast (left-to-right)", { error: e })
-            }
-          }
-        } else {
-          // Default: Sync Right -> Left (Overwrite Left with copy of Right)
+        if (props.compareMode) {
           for (const targetID of props.broadcastSessionIDs) {
-            try {
-              const fork = await sdk.client.session.fork({
-                sessionID,
-              })
-              if (fork.data) {
-                newBroadcastSessionIDs.push(fork.data.id)
-              } else {
-                newBroadcastSessionIDs.push(targetID)
-              }
-            } catch (e) {
-              Log.Default.error("Error forking session for broadcast", { error: e })
-              newBroadcastSessionIDs.push(targetID)
-            }
-          }
-
-          // If we created a new session, update the UI to show it
-          if (
-            newBroadcastSessionIDs.length > 0 &&
-            newBroadcastSessionIDs[0] !== props.broadcastSessionIDs[0]
-          ) {
-            route.navigate({
-              type: "session",
-              sessionID: newBroadcastSessionIDs[0], // Only updating the left pane
-              rightSessionID: sessionID,            // Keeping right pane same
+            sdk.client.session.prompt({
+              sessionID: targetID,
+              // Use a new message ID for the broadcasted message to avoid potential conflicts
+              messageID: Identifier.ascending("message"),
+              ...payloadProto,
             })
           }
-        }
+        } else {
+          const newBroadcastSessionIDs: string[] = []
 
-        for (const targetID of newBroadcastSessionIDs) {
-          sdk.client.session.prompt({
-            sessionID: targetID,
-            // Use a new message ID for the broadcasted message to avoid potential conflicts
-            messageID: Identifier.ascending("message"),
-            ...payloadProto,
-          })
+          if (props.syncMode === 'left-to-right') {
+            // Sync Left -> Right (Overwrite Right with Left)
+            for (const leftID of props.broadcastSessionIDs) {
+              newBroadcastSessionIDs.push(leftID)
+              try {
+                const fork = await sdk.client.session.fork({ sessionID: leftID })
+                if (fork.data) {
+                  const newRightID = fork.data.id
+                  newBroadcastSessionIDs.push(newRightID)
+
+                  route.navigate({
+                    type: "session",
+                    sessionID: leftID,
+                    rightSessionID: newRightID,
+                  })
+                }
+              } catch (e) {
+                Log.Default.error("Error forking session for broadcast (left-to-right)", { error: e })
+              }
+            }
+          } else {
+            // Default: Sync Right -> Left (Overwrite Left with copy of Right)
+            for (const targetID of props.broadcastSessionIDs) {
+              try {
+                const fork = await sdk.client.session.fork({
+                  sessionID,
+                })
+                if (fork.data) {
+                  newBroadcastSessionIDs.push(fork.data.id)
+                } else {
+                  newBroadcastSessionIDs.push(targetID)
+                }
+              } catch (e) {
+                Log.Default.error("Error forking session for broadcast", { error: e })
+                newBroadcastSessionIDs.push(targetID)
+              }
+            }
+
+            // If we created a new session, update the UI to show it
+            if (
+              newBroadcastSessionIDs.length > 0 &&
+              newBroadcastSessionIDs[0] !== props.broadcastSessionIDs[0]
+            ) {
+              route.navigate({
+                type: "session",
+                sessionID: newBroadcastSessionIDs[0], // Only updating the left pane
+                rightSessionID: sessionID,            // Keeping right pane same
+              })
+            }
+          }
+
+          for (const targetID of newBroadcastSessionIDs) {
+            sdk.client.session.prompt({
+              sessionID: targetID,
+              // Use a new message ID for the broadcasted message to avoid potential conflicts
+              messageID: Identifier.ascending("message"),
+              ...payloadProto,
+            })
+          }
         }
       }
     }

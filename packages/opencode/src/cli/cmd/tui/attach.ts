@@ -1,5 +1,6 @@
 import { cmd } from "../cmd"
 import { tui } from "./app"
+import { requireOpenInferenceKey } from "./guard"
 
 export const AttachCommand = cmd({
   command: "attach <url>",
@@ -21,6 +22,7 @@ export const AttachCommand = cmd({
         describe: "session id to continue",
       }),
   handler: async (args) => {
+    requireOpenInferenceKey()
     if (args.dir) process.chdir(args.dir)
     await tui({
       url: args.url,

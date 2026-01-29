@@ -47,7 +47,6 @@ import { useKeyboard, useRenderer, useTerminalDimensions, type JSX } from "@open
 import { useSDK } from "@tui/context/sdk"
 import { useCommandDialog } from "@tui/component/dialog-command"
 import { useKeybind } from "@tui/context/keybind"
-import { Header } from "./header"
 import { parsePatch } from "diff"
 import { useDialog } from "../../ui/dialog"
 import { Identifier } from "@/id/id"
@@ -78,7 +77,7 @@ import { Toast, useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv.tsx"
 import { Editor } from "../../util/editor"
 import stripAnsi from "strip-ansi"
-import { Footer } from "./footer.tsx"
+import { pipe, sumBy } from "remeda"
 import { usePromptRef } from "../../context/prompt"
 import { Filesystem } from "@/util/filesystem"
 import { PermissionPrompt } from "./permission"
@@ -134,7 +133,6 @@ function use() {
 
 export function Session() {
   const route = useRouteData("session")
-  const { navigate } = useRoute()
   const sync = useSync()
   const kv = useKV()
   const { theme } = useTheme()
@@ -183,40 +181,68 @@ export function Session() {
   const [controlSide, setControlSide] = createSignal<"left" | "right">("right")
   const [scrollToBottomLeft, setScrollToBottomLeft] = createSignal<(() => void) | undefined>(undefined)
   const [scrollToBottomRight, setScrollToBottomRight] = createSignal<(() => void) | undefined>(undefined)
-  const [hoverLeftChoice, setHoverLeftChoice] = createSignal(false)
-  const [hoverRightChoice, setHoverRightChoice] = createSignal(false)
+  const messages = createMemo(() => sync.data.message[route.sessionID] ?? [])
+  const cost = createMemo(() => {
+    const total = pipe(
+      messages(),
+      sumBy((x) => (x.role === "assistant" ? x.cost : 0)),
+    )
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+    }).format(total)
+  })
+  const tokenContext = createMemo(() => {
+    const last = messages().findLast((x) => x.role === "assistant" && x.tokens.output > 0)
+    if (!last) return undefined
+    const total =
+      last.tokens.input + last.tokens.output + last.tokens.reasoning + last.tokens.cache.read + last.tokens.cache.write
+    const model = sync.data.provider.find((x) => x.id === last.providerID)?.models[last.modelID]
+    let result = total.toLocaleString()
+    if (model?.limit.context) {
+      result += "  " + Math.round((total / model.limit.context) * 100) + "%"
+    }
+    return result
+  })
 
   useKeyboard(
     (key) => {
       // Toggle Control Side (Always active)
       if (key.ctrl && key.name === "o") {
-        setControlSide((prev) => (prev === "left" ? "right" : "left"))
-      }
-
-      // Check if any session is busy
-      const leftStatus = sync.session.status(route.sessionID)
-      const rightStatus = route.rightSessionID ? sync.session.status(route.rightSessionID) : "idle"
-      if (leftStatus !== "idle" || rightStatus !== "idle") {
-        return
+        setControlSide((prev) => {
+          const next = prev === "left" ? "right" : "left"
+          if (next === "left") {
+            setLeftColor(theme.success)
+            setRightColor(undefined)
+          } else {
+            setRightColor(theme.success)
+            setLeftColor(undefined)
+          }
+          return next
+        })
       }
 
       if (key.ctrl && key.name === "k") {
         setLeftColor(theme.success)
         setRightColor(undefined)
+        setControlSide("left")
       }
       if (key.ctrl && key.name === "l") {
         setRightColor(theme.success)
         setLeftColor(undefined)
+        setControlSide("right")
       }
 
       if (isSplit() && promptDisabled()) {
         if (key.name === "left") {
           setLeftColor(theme.success)
           setRightColor(undefined)
+          setControlSide("left")
         }
         if (key.name === "right") {
           setRightColor(theme.success)
           setLeftColor(undefined)
+          setControlSide("right")
         }
       }
     }
@@ -234,7 +260,12 @@ export function Session() {
     return undefined
   })
 
-  const promptSessionID = createMemo(() => route.rightSessionID ?? route.sessionID)
+  const promptSessionID = createMemo(() => {
+    if (isSplit() && route.rightSessionID) {
+      return controlSide() === "left" ? route.sessionID : route.rightSessionID
+    }
+    return route.sessionID
+  })
   const promptSession = createMemo(() => sync.session.get(promptSessionID()))
   const promptPermissions = createMemo(() => {
     const s = promptSession()
@@ -297,25 +328,44 @@ export function Session() {
       }}
     >
       <box flexDirection="column">
-        <box flexDirection="row" height={3} border={["bottom"]} borderColor={theme.border} paddingLeft={1} paddingRight={1} alignItems="center" gap={1}>
-          <box border={["left", "right", "top", "bottom"]} borderColor={leftColor() ?? theme.border} paddingLeft={1} paddingRight={1}>
-            <text fg={leftColor() ?? theme.text}>left</text>
-          </box>
-          <box border={["left", "right", "top", "bottom"]} borderColor={rightColor() ?? theme.border} paddingLeft={1} paddingRight={1}>
-            <text fg={rightColor() ?? theme.text}>right</text>
-          </box>
+        <Show when={isSplit()}>
           <box
-            marginLeft={2}
-            border={["left", "right", "top", "bottom"]}
-            borderColor={controlSide() === "left" ? theme.success : theme.error}
+            flexDirection="row"
+            height={3}
+            border={["bottom"]}
+            borderColor={theme.border}
             paddingLeft={1}
             paddingRight={1}
+            alignItems="center"
+            gap={1}
+            justifyContent="space-between"
           >
-            <text fg={controlSide() === "left" ? theme.success : theme.error}>
-              {controlSide()}
-            </text>
+            <box flexDirection="row" gap={1} alignItems="center">
+              <box
+                border={["left", "right", "top", "bottom"]}
+                borderColor={controlSide() === "left" ? theme.success : theme.border}
+                paddingLeft={1}
+                paddingRight={1}
+              >
+                <text fg={controlSide() === "left" ? theme.success : theme.text}>left</text>
+              </box>
+              <box
+                border={["left", "right", "top", "bottom"]}
+                borderColor={controlSide() === "right" ? theme.success : theme.border}
+                paddingLeft={1}
+                paddingRight={1}
+              >
+                <text fg={controlSide() === "right" ? theme.success : theme.text}>right</text>
+              </box>
+            </box>
+            <box flexDirection="row" gap={2} alignItems="center">
+              <text fg={theme.textMuted} wrapMode="none">
+                {tokenContext() ?? "—"} ({cost()})
+              </text>
+              <text fg={theme.textMuted} wrapMode="none">TPU credits: —</text>
+            </box>
           </box>
-        </box>
+        </Show>
         <box flexDirection="column" flexGrow={1}>
           <box flexDirection="row" flexGrow={1}>
             <SessionPane
@@ -327,7 +377,7 @@ export function Session() {
               otherSessionID={route.rightSessionID}
               onScrollToBottom={(fn) => setScrollToBottomLeft(() => fn)}
             />
-            <Show when={route.rightSessionID}>
+            <Show when={isSplit() && route.rightSessionID}>
               <SessionPane
                 sessionID={route.rightSessionID!}
                 width={paneWidth()}
@@ -346,34 +396,26 @@ export function Session() {
                   <box flexDirection="row" justifyContent="center" gap={1} paddingBottom={1}>
                     <box
                       border={["left", "right", "top", "bottom"]}
-                      borderColor={leftColor() ?? (hoverLeftChoice() ? theme.text : theme.border)}
+                      borderColor={leftColor() ?? theme.border}
                       paddingLeft={1}
                       paddingRight={1}
-                      onMouseEnter={() => setHoverLeftChoice(true)}
-                      onMouseLeave={() => setHoverLeftChoice(false)}
                       onMouseUp={() => {
-                        const leftStatus = sync.session.status(route.sessionID)
-                        const rightStatus = route.rightSessionID ? sync.session.status(route.rightSessionID) : "idle"
-                        if (leftStatus !== "idle" || rightStatus !== "idle") return
                         setLeftColor(theme.success)
                         setRightColor(undefined)
+                        setControlSide("left")
                       }}
                     >
                       <text fg={leftColor() ?? theme.text}>Left</text>
                     </box>
                     <box
                       border={["left", "right", "top", "bottom"]}
-                      borderColor={rightColor() ?? (hoverRightChoice() ? theme.text : theme.border)}
+                      borderColor={rightColor() ?? theme.border}
                       paddingLeft={1}
                       paddingRight={1}
-                      onMouseEnter={() => setHoverRightChoice(true)}
-                      onMouseLeave={() => setHoverRightChoice(false)}
                       onMouseUp={() => {
-                        const leftStatus = sync.session.status(route.sessionID)
-                        const rightStatus = route.rightSessionID ? sync.session.status(route.rightSessionID) : "idle"
-                        if (leftStatus !== "idle" || rightStatus !== "idle") return
                         setRightColor(theme.success)
                         setLeftColor(undefined)
+                        setControlSide("right")
                       }}
                     >
                       <text fg={rightColor() ?? theme.text}>Right</text>
@@ -465,7 +507,14 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
   })
 
   const pending = createMemo(() => {
-    return messages().findLast((x) => x.role === "assistant" && !x.time.completed)?.id
+    return messages()
+      .findLast((x) => {
+        if (x.role !== "assistant") return false
+        if (x.time.completed) return false
+        if (x.finish && !["tool-calls", "unknown"].includes(x.finish)) return false
+        return true
+      })
+      ?.id
   })
 
   const lastAssistant = createMemo(() => {
@@ -1291,9 +1340,6 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
     <context.Provider value={ctx}>
       <box width={props.width} paddingBottom={1} paddingTop={1} paddingLeft={2} paddingRight={2} gap={1}>
         <Show when={session()}>
-          <Show when={!sidebarVisible()}>
-            <Header />
-          </Show>
           <scrollbox
             ref={(r) => {
               scroll = r
@@ -1422,9 +1468,6 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
               />
             </Show>
           </box>
-          <Show when={!sidebarVisible()}>
-            <Footer />
-          </Show>
         </Show>
         <Toast />
       </box>

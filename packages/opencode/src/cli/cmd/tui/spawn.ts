@@ -4,6 +4,7 @@ import path from "path"
 import { Server } from "@/server/server"
 import { upgrade } from "@/cli/upgrade"
 import { withNetworkOptions, resolveNetworkOptions } from "@/cli/network"
+import { requireOpenInferenceKey } from "./guard"
 
 export const TuiSpawnCommand = cmd({
   command: "spawn [project]",
@@ -13,6 +14,7 @@ export const TuiSpawnCommand = cmd({
       describe: "path to start opencode in",
     }),
   handler: async (args) => {
+    requireOpenInferenceKey()
     upgrade()
     const opts = await resolveNetworkOptions(args)
     const server = Server.listen(opts)

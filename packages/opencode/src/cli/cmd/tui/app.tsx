@@ -398,15 +398,6 @@ function App() {
       },
     },
     {
-      title: "Connect provider",
-      value: "provider.connect",
-      suggested: !connected(),
-      onSelect: () => {
-        dialog.replace(() => <DialogProviderList />)
-      },
-      category: "Provider",
-    },
-    {
       title: "View status",
       keybind: "status_view",
       value: "opencode.status",

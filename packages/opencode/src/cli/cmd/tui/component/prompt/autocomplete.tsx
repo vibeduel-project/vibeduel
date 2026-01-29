@@ -381,11 +381,6 @@ export function Autocomplete(props: {
         onSelect: () => command.trigger("prompt.editor", "prompt"),
       },
       {
-        display: "/connect",
-        description: "connect to a provider",
-        onSelect: () => command.trigger("provider.connect"),
-      },
-      {
         display: "/help",
         description: "show help",
         onSelect: () => command.trigger("help.show"),

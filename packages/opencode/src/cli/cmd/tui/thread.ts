@@ -7,6 +7,7 @@ import { UI } from "@/cli/ui"
 import { iife } from "@/util/iife"
 import { Log } from "@/util/log"
 import { withNetworkOptions, resolveNetworkOptions } from "@/cli/network"
+import { requireOpenInferenceKey } from "./guard"
 
 declare global {
   const OPENCODE_WORKER_PATH: string
@@ -45,6 +46,7 @@ export const TuiThreadCommand = cmd({
         describe: "agent to use",
       }),
   handler: async (args) => {
+    requireOpenInferenceKey()
     await Log.init({
       print: process.argv.includes("--print-logs"),
       dev: true,

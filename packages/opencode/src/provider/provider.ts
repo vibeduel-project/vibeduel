@@ -138,6 +138,21 @@ export namespace Provider {
         options: {},
       }
     },
+    openinference: async () => {
+      return {
+        autoload: true,
+        options: {
+          baseURL: Env.get("OPENINFERENCE_BASE_URL") ?? "http://localhost:7001/v1",
+        },
+        async getModel(sdk: any, modelID: string, _options?: Record<string, any>) {
+          if (typeof sdk.languageModel === "function") return sdk.languageModel(modelID)
+          if (typeof sdk.chat === "function") return sdk.chat(modelID)
+          if (typeof sdk.responses === "function") return sdk.responses(modelID)
+          if (typeof sdk === "function") return sdk(modelID)
+          throw new Error("OpenInference provider does not support chat models")
+        },
+      }
+    },
     azure: async () => {
       return {
         autoload: false,
@@ -492,6 +507,62 @@ export namespace Provider {
     })
   export type Info = z.infer<typeof Info>
 
+  function normalizeBaseURL(url: string) {
+    return url.replace(/\/+$/, "")
+  }
+
+  function buildOpenAICompatibleModel(providerID: string, modelID: string, baseURL: string): Model {
+    return {
+      id: modelID,
+      providerID,
+      name: modelID,
+      family: "",
+      api: {
+        id: modelID,
+        url: baseURL,
+        npm: "@ai-sdk/openai-compatible",
+      },
+      status: "active",
+      headers: {},
+      options: {},
+      cost: {
+        input: 0,
+        output: 0,
+        cache: {
+          read: 0,
+          write: 0,
+        },
+      },
+      limit: {
+        context: 0,
+        output: 0,
+      },
+      capabilities: {
+        temperature: true,
+        reasoning: false,
+        attachment: true,
+        toolcall: true,
+        input: {
+          text: true,
+          audio: false,
+          image: false,
+          video: false,
+          pdf: false,
+        },
+        output: {
+          text: true,
+          audio: false,
+          image: false,
+          video: false,
+          pdf: false,
+        },
+        interleaved: false,
+      },
+      release_date: "",
+      variants: {},
+    }
+  }
+
   function fromModelsDevModel(provider: ModelsDev.Provider, model: ModelsDev.Model): Model {
     const m: Model = {
       id: model.id,
@@ -574,6 +645,24 @@ export namespace Provider {
     const config = await Config.get()
     const modelsDev = await ModelsDev.get()
     const database = mapValues(modelsDev, fromModelsDevProvider)
+    const openInferenceBaseURL = Env.get("OPENINFERENCE_BASE_URL") ?? "http://localhost:7001/v1"
+
+    if (!database["openinference"]) {
+      database["openinference"] = {
+        id: "openinference",
+        source: "custom",
+        name: "OpenInference",
+        env: ["OPENINFERENCE_API_KEY"],
+        options: {
+          baseURL: openInferenceBaseURL,
+        },
+        models: {},
+      }
+    } else {
+      const existing = database["openinference"]
+      existing.env = Array.from(new Set([...(existing.env ?? []), "OPENINFERENCE_API_KEY"]))
+      existing.options = mergeDeep(existing.options ?? {}, { baseURL: openInferenceBaseURL })
+    }
 
     const disabled = new Set(config.disabled_providers ?? [])
     const enabled = config.enabled_providers ? new Set(config.enabled_providers) : null
@@ -705,8 +794,57 @@ export namespace Provider {
       database[providerID] = parsed
     }
 
-    // load env
     const env = Env.all()
+    async function hydrateOpenAICompatibleModels(providerID: string) {
+      const provider = database[providerID]
+      if (!provider) return
+
+      const modelList = Object.values(provider.models)
+      const baseURL =
+        provider.options?.baseURL ??
+        modelList.find((model) => !!model.api.url)?.api.url ??
+        undefined
+      if (!baseURL) return
+
+      const usesOpenAICompatible =
+        providerID === "openinference" ||
+        modelList.some((model) => model.api.npm.includes("@ai-sdk/openai-compatible")) ||
+        (modelList.length === 0 && provider.options?.baseURL)
+      if (!usesOpenAICompatible) return
+
+      const apiKey = provider.env.map((item) => env[item]).find(Boolean)
+      const headers = apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined
+      const endpoint = `${normalizeBaseURL(baseURL)}/models`
+      try {
+        const response = await fetch(endpoint, { headers })
+        if (!response.ok) {
+          log.warn("models.list failed", { providerID, status: response.status })
+          return
+        }
+        const data = (await response.json().catch(() => null)) as any
+        const ids = Array.isArray(data?.data)
+          ? data.data
+              .map((item: any) => item?.id)
+              .filter((id: unknown): id is string => typeof id === "string" && id.length > 0)
+          : []
+        if (ids.length === 0) return
+
+        provider.models = Object.fromEntries(
+          ids.map((id) => [id, buildOpenAICompatibleModel(providerID, id, baseURL)]),
+        )
+      } catch (error) {
+        log.warn("models.list failed", { providerID, error: error instanceof Error ? error.message : error })
+      }
+    }
+
+    await Promise.all(
+      Object.keys(database).map(async (providerID) => {
+        if (disabled.has(providerID)) return
+        await hydrateOpenAICompatibleModels(providerID)
+      }),
+    )
+
+    // load env
     for (const [providerID, provider] of Object.entries(database)) {
       if (disabled.has(providerID)) continue
       const apiKey = provider.env.map((item) => env[item]).find(Boolean)
@@ -842,6 +980,12 @@ export namespace Provider {
       }
 
       log.info("found", { providerID })
+    }
+
+    if (providers["openinference"]) {
+      for (const providerID of Object.keys(providers)) {
+        if (providerID !== "openinference") delete providers[providerID]
+      }
     }
 
     return {

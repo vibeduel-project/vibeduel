@@ -1693,11 +1693,16 @@ export namespace Server {
           const config = await Config.get()
           const disabled = new Set(config.disabled_providers ?? [])
           const enabled = config.enabled_providers ? new Set(config.enabled_providers) : undefined
+          const allowedProviders = new Set(["openinference"])
 
           const allProviders = await ModelsDev.get()
           const filteredProviders: Record<string, (typeof allProviders)[string]> = {}
           for (const [key, value] of Object.entries(allProviders)) {
-            if ((enabled ? enabled.has(key) : true) && !disabled.has(key)) {
+            if (
+              allowedProviders.has(key) &&
+              (enabled ? enabled.has(key) : true) &&
+              !disabled.has(key)
+            ) {
               filteredProviders[key] = value
             }
           }
@@ -1710,7 +1715,7 @@ export namespace Server {
           return c.json({
             all: Object.values(providers),
             default: mapValues(providers, (item) => Provider.sort(Object.values(item.models))[0].id),
-            connected: Object.keys(connected),
+            connected: Object.keys(connected).filter((id) => allowedProviders.has(id)),
           })
         },
       )
@@ -1732,7 +1737,10 @@ export namespace Server {
           },
         }),
         async (c) => {
-          return c.json(await ProviderAuth.methods())
+          const methods = await ProviderAuth.methods()
+          return c.json(
+            Object.fromEntries(Object.entries(methods).filter(([providerID]) => providerID === "openinference")),
+          )
         },
       )
       .post(
