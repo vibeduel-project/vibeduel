@@ -5,11 +5,11 @@ const OPENINFERENCE_KEY_URL = "https://YOUR_ZUPLO_KEYGEN_URL_HERE"
 
 export async function requireOpenInferenceKey() {
   // Check environment for the API key (Bun.env can differ from process.env)
-  const key =
-    process.env.OPENINFERENCE_API_KEY ??
-    // @ts-expect-error Bun.env is available in Bun runtime
-    (typeof Bun !== "undefined" ? Bun.env.OPENINFERENCE_API_KEY : undefined) ??
-    ""
+  const bunEnv =
+    typeof Bun !== "undefined"
+      ? (Bun as { env: Record<string, string | undefined> }).env
+      : undefined
+  const key = process.env.OPENINFERENCE_API_KEY ?? bunEnv?.OPENINFERENCE_API_KEY ?? ""
   if (key.trim()) {
     return
   }
