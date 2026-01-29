@@ -107,42 +107,10 @@ export function Home() {
               promptRef.set(r)
             }}
             hint={Hint}
-            onSubmit={async (sessionID, promptInfo) => {
-              // Create right session
-              const rightSessionID = await sdk.client.session.create({}).then((x) => x.data!.id)
-
-              const selectedModel = local.model.current()
-              const variant = local.model.variant.current()
-              const messageID = Identifier.ascending("message")
-
-              // Filter out text parts (pasted content) since they're expanded inline
-              const nonTextParts = promptInfo.parts.filter((part) => part.type !== "text")
-
-              // Send same prompt to right session
-              sdk.client.session.prompt({
-                sessionID: rightSessionID,
-                ...selectedModel!,
-                messageID,
-                agent: local.agent.current().name,
-                model: selectedModel!,
-                variant,
-                parts: [
-                  {
-                    id: Identifier.ascending("part"),
-                    type: "text",
-                    text: promptInfo.input,
-                  },
-                  ...nonTextParts.map((x) => ({
-                    id: Identifier.ascending("part"),
-                    ...x,
-                  })),
-                ],
-              })
-
+            onSubmit={async (sessionID) => {
               navigate({
                 type: "session",
                 sessionID,
-                rightSessionID,
               })
             }}
           />

@@ -147,11 +147,7 @@ export function Prompt(props: PromptProps) {
   const textareaKeybindings = createMemo(() => {
     const keybinds = keybind.all
 
-    return [
-      { name: "return", action: "submit" },
-      { name: "return", meta: true, action: "newline" },
-      ...TEXTAREA_ACTIONS.flatMap((action) => mapTextareaKeybindings(keybinds, action)),
-    ] satisfies KeyBinding[]
+    return [...TEXTAREA_ACTIONS.flatMap((action) => mapTextareaKeybindings(keybinds, action))] satisfies KeyBinding[]
   })
 
   const fileStyleId = syntax().getStyleId("extmark.file")!
@@ -676,11 +672,20 @@ export function Prompt(props: PromptProps) {
         ],
       }
 
-      sdk.client.session.prompt({
-        sessionID,
-        messageID,
-        ...payloadProto
-      })
+      if (props.compareMode) {
+        sdk.client.session.prompt({
+          sessionID,
+          messageID,
+          ...payloadProto,
+          system: "You are response A. Answer concisely in bullet points.",
+        })
+      } else {
+        sdk.client.session.prompt({
+          sessionID,
+          messageID,
+          ...payloadProto,
+        })
+      }
 
       if (props.broadcastSessionIDs) {
         if (props.compareMode) {
@@ -690,6 +695,7 @@ export function Prompt(props: PromptProps) {
               // Use a new message ID for the broadcasted message to avoid potential conflicts
               messageID: Identifier.ascending("message"),
               ...payloadProto,
+              system: "You are response B. Answer in a short paragraph without bullets.",
             })
           }
         } else {

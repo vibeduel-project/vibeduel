@@ -33,7 +33,21 @@ export const { use: useRoute, provider: RouteProvider } = createSimpleContext({
       },
       navigate(route: Route) {
         console.log("navigate", route)
-        setStore(route)
+        if (route.type === "session") {
+          setStore({
+            type: "session",
+            sessionID: route.sessionID,
+            rightSessionID: route.rightSessionID ?? undefined,
+            initialPrompt: route.initialPrompt,
+          } as any)
+          return
+        }
+        setStore({
+          type: "home",
+          sessionID: undefined,
+          rightSessionID: undefined,
+          initialPrompt: route.initialPrompt,
+        } as any)
       },
     }
   },

@@ -133,10 +133,13 @@ function use() {
 
 export function Session() {
   const route = useRouteData("session")
+  const { navigate } = useRoute()
   const sync = useSync()
   const kv = useKV()
   const { theme } = useTheme()
   const promptRef = usePromptRef()
+  const toast = useToast()
+  const sdk = useSDK()
 
   const [sidebar, setSidebar] = createSignal<"show" | "hide" | "auto">(kv.get("sidebar", "hide"))
   const [conceal, setConceal] = createSignal(true)
@@ -177,11 +180,36 @@ export function Session() {
   // Button colors
   const [leftColor, setLeftColor] = createSignal<string | RGBA | undefined>(undefined)
   const [rightColor, setRightColor] = createSignal<string | RGBA | undefined>(undefined)
+  const [awaitingVote, setAwaitingVote] = createSignal(false)
+  const [lastChosenSessionID, setLastChosenSessionID] = createSignal<string | undefined>(undefined)
+  const [duelHover, setDuelHover] = createSignal(false)
 
   const [controlSide, setControlSide] = createSignal<"left" | "right">("right")
   const [scrollToBottomLeft, setScrollToBottomLeft] = createSignal<(() => void) | undefined>(undefined)
   const [scrollToBottomRight, setScrollToBottomRight] = createSignal<(() => void) | undefined>(undefined)
-  const messages = createMemo(() => sync.data.message[route.sessionID] ?? [])
+
+  useKeyboard(
+    (key) => {
+      // Only handle arrow keys for voting when awaiting vote
+      if (isSplit() && promptDisabled()) {
+        if (key.name === "left") {
+          setLeftColor(theme.success)
+          setRightColor(undefined)
+          setControlSide("left")
+          finalizeVote("left")
+        }
+        if (key.name === "right") {
+          setRightColor(theme.success)
+          setLeftColor(undefined)
+          setControlSide("right")
+          finalizeVote("right")
+        }
+      }
+    }
+  )
+
+  const promptSessionID = createMemo(() => route.sessionID)
+  const messages = createMemo(() => sync.data.message[promptSessionID()] ?? [])
   const cost = createMemo(() => {
     const total = pipe(
       messages(),
@@ -193,7 +221,7 @@ export function Session() {
     }).format(total)
   })
   const tokenContext = createMemo(() => {
-    const last = messages().findLast((x) => x.role === "assistant" && x.tokens.output > 0)
+    const last = messages().findLast((x) => x.role === "assistant" && x.tokens.output > 0) as AssistantMessage | undefined
     if (!last) return undefined
     const total =
       last.tokens.input + last.tokens.output + last.tokens.reasoning + last.tokens.cache.read + last.tokens.cache.write
@@ -203,68 +231,6 @@ export function Session() {
       result += "  " + Math.round((total / model.limit.context) * 100) + "%"
     }
     return result
-  })
-
-  useKeyboard(
-    (key) => {
-      // Toggle Control Side (Always active)
-      if (key.ctrl && key.name === "o") {
-        setControlSide((prev) => {
-          const next = prev === "left" ? "right" : "left"
-          if (next === "left") {
-            setLeftColor(theme.success)
-            setRightColor(undefined)
-          } else {
-            setRightColor(theme.success)
-            setLeftColor(undefined)
-          }
-          return next
-        })
-      }
-
-      if (key.ctrl && key.name === "k") {
-        setLeftColor(theme.success)
-        setRightColor(undefined)
-        setControlSide("left")
-      }
-      if (key.ctrl && key.name === "l") {
-        setRightColor(theme.success)
-        setLeftColor(undefined)
-        setControlSide("right")
-      }
-
-      if (isSplit() && promptDisabled()) {
-        if (key.name === "left") {
-          setLeftColor(theme.success)
-          setRightColor(undefined)
-          setControlSide("left")
-        }
-        if (key.name === "right") {
-          setRightColor(theme.success)
-          setLeftColor(undefined)
-          setControlSide("right")
-        }
-      }
-    }
-  )
-
-  /* Button colors handlers */
-  const resetColors = () => {
-    setLeftColor(undefined)
-    setRightColor(undefined)
-  }
-
-  const syncMode = createMemo(() => {
-    if (leftColor()) return "left-to-right"
-    if (rightColor()) return "right-to-left"
-    return undefined
-  })
-
-  const promptSessionID = createMemo(() => {
-    if (isSplit() && route.rightSessionID) {
-      return controlSide() === "left" ? route.sessionID : route.rightSessionID
-    }
-    return route.sessionID
   })
   const promptSession = createMemo(() => sync.session.get(promptSessionID()))
   const promptPermissions = createMemo(() => {
@@ -283,7 +249,7 @@ export function Session() {
     if (!route.rightSessionID && s?.parentID) return false
     return promptPermissions().length === 0
   })
-  const promptDisabled = createMemo(() => isSplit() && !syncMode())
+  const promptDisabled = createMemo(() => isSplit() && awaitingVote())
 
   const promptMaxWidth = createMemo(() => Math.min(96, Math.max(0, dimensions().width - 4)))
 
@@ -293,6 +259,91 @@ export function Session() {
       prompt.set(route.initialPrompt)
     }
   })
+
+  createEffect(() => {
+    if (isSplit()) return
+    setAwaitingVote(false)
+    setLeftColor(undefined)
+    setRightColor(undefined)
+  })
+
+  const finalizeVote = async (side: "left" | "right") => {
+    if (!route.rightSessionID) return
+    const winningID = side === "left" ? route.sessionID : route.rightSessionID
+
+    setLastChosenSessionID(winningID)
+    setControlSide(side)
+    setAwaitingVote(false)
+
+    // Synchronize history: replace losing session with fork of winning session
+    try {
+      const fork = await sdk.client.session.fork({ sessionID: winningID })
+      if (!fork.data) return
+
+      // Replace the losing session with the forked winning session
+      if (side === "left") {
+        // Left wins, replace right with fork of left
+        navigate({
+          type: "session",
+          sessionID: route.sessionID,
+          rightSessionID: fork.data.id,
+        })
+      } else {
+        // Right wins, replace left with fork of right
+        navigate({
+          type: "session",
+          sessionID: fork.data.id,
+          rightSessionID: route.rightSessionID,
+        })
+      }
+    } catch (e) {
+      console.error("Failed to sync histories:", e)
+    }
+  }
+
+  const enterDuel = async () => {
+    if (isSplit()) return
+    try {
+      const fork = await sdk.client.session.fork({ sessionID: route.sessionID })
+      if (!fork.data) throw new Error("No session id returned")
+      navigate({
+        type: "session",
+        sessionID: route.sessionID,
+        rightSessionID: fork.data.id,
+      })
+    } catch (e) {
+      toast.show({
+        message: "Failed to start duel mode",
+        variant: "error",
+      })
+    }
+  }
+
+  const exitDuel = () => {
+    if (!route.rightSessionID) return
+    // Use last voted session, or default to left side if no vote happened
+    const selectedID = lastChosenSessionID() ?? route.sessionID
+
+    // Clear all pairwise state immediately
+    setAwaitingVote(false)
+    setLeftColor(undefined)
+    setRightColor(undefined)
+    setLastChosenSessionID(undefined)
+
+    navigate({
+      type: "session",
+      sessionID: selectedID,
+      rightSessionID: undefined,
+    })
+  }
+
+  const toggleDuel = () => {
+    if (isSplit()) {
+      exitDuel()
+    } else {
+      void enterDuel()
+    }
+  }
 
   return (
     <context.Provider
@@ -328,19 +379,19 @@ export function Session() {
       }}
     >
       <box flexDirection="column">
-        <Show when={isSplit()}>
-          <box
-            flexDirection="row"
-            height={3}
-            border={["bottom"]}
-            borderColor={theme.border}
-            paddingLeft={1}
-            paddingRight={1}
-            alignItems="center"
-            gap={1}
-            justifyContent="space-between"
-          >
-            <box flexDirection="row" gap={1} alignItems="center">
+        <box
+          flexDirection="row"
+          height={3}
+          border={["bottom"]}
+          borderColor={theme.border}
+          paddingLeft={1}
+          paddingRight={1}
+          alignItems="center"
+          gap={1}
+          justifyContent="space-between"
+        >
+          <box flexDirection="row" gap={1} alignItems="center">
+            <Show when={isSplit()}>
               <box
                 border={["left", "right", "top", "bottom"]}
                 borderColor={controlSide() === "left" ? theme.success : theme.border}
@@ -357,6 +408,20 @@ export function Session() {
               >
                 <text fg={controlSide() === "right" ? theme.success : theme.text}>right</text>
               </box>
+            </Show>
+          </box>
+          <box flexDirection="column" alignItems="flex-end">
+            <box
+              border={["left", "right", "top", "bottom"]}
+              borderColor={isSplit() ? theme.success : theme.border}
+              paddingLeft={1}
+              paddingRight={1}
+              backgroundColor={duelHover() ? theme.backgroundMenu : undefined}
+              onMouseOver={() => setDuelHover(true)}
+              onMouseOut={() => setDuelHover(false)}
+              onMouseUp={toggleDuel}
+            >
+              <text fg={isSplit() ? theme.success : theme.text}>Reload Credits</text>
             </box>
             <box flexDirection="row" gap={2} alignItems="center">
               <text fg={theme.textMuted} wrapMode="none">
@@ -365,7 +430,7 @@ export function Session() {
               <text fg={theme.textMuted} wrapMode="none">TPU credits: —</text>
             </box>
           </box>
-        </Show>
+        </box>
         <box flexDirection="column" flexGrow={1}>
           <box flexDirection="row" flexGrow={1}>
             <SessionPane
@@ -403,6 +468,7 @@ export function Session() {
                         setLeftColor(theme.success)
                         setRightColor(undefined)
                         setControlSide("left")
+                        finalizeVote("left")
                       }}
                     >
                       <text fg={leftColor() ?? theme.text}>Left</text>
@@ -416,6 +482,7 @@ export function Session() {
                         setRightColor(theme.success)
                         setLeftColor(undefined)
                         setControlSide("right")
+                        finalizeVote("right")
                       }}
                     >
                       <text fg={rightColor() ?? theme.text}>Right</text>
@@ -425,8 +492,8 @@ export function Session() {
                 </Show>
                 <Prompt
                   visible={true}
-                  broadcastSessionIDs={isSplit() ? [route.sessionID] : undefined}
-                  syncMode={syncMode()}
+                  broadcastSessionIDs={route.rightSessionID ? [route.rightSessionID] : undefined}
+                  compareMode={isSplit()}
                   disabled={promptDisabled()}
                   focused={!promptDisabled()}
                   ref={(r) => {
@@ -436,7 +503,7 @@ export function Session() {
                   onSubmit={() => {
                     const scrollFn = isSplit() ? scrollToBottomRight() : scrollToBottomLeft()
                     scrollFn?.()
-                    resetColors()
+                    if (isSplit()) setAwaitingVote(true)
                   }}
                   sessionID={promptSessionID()}
                 />

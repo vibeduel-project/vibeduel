@@ -142,7 +142,7 @@ export namespace Provider {
       return {
         autoload: true,
         options: {
-          baseURL: Env.get("OPENINFERENCE_BASE_URL") ?? "http://localhost:7001/v1",
+          baseURL: Env.get("OPENINFERENCE_BASE_URL") ?? "http://localhost:7005/v1",
         },
         async getModel(sdk: any, modelID: string, _options?: Record<string, any>) {
           if (typeof sdk.languageModel === "function") return sdk.languageModel(modelID)
@@ -645,7 +645,7 @@ export namespace Provider {
     const config = await Config.get()
     const modelsDev = await ModelsDev.get()
     const database = mapValues(modelsDev, fromModelsDevProvider)
-    const openInferenceBaseURL = Env.get("OPENINFERENCE_BASE_URL") ?? "http://localhost:7001/v1"
+    const openInferenceBaseURL = Env.get("OPENINFERENCE_BASE_URL") ?? "http://localhost:7005/v1"
 
     if (!database["openinference"]) {
       database["openinference"] = {
@@ -822,7 +822,7 @@ export namespace Provider {
           return
         }
         const data = (await response.json().catch(() => null)) as any
-        const ids = Array.isArray(data?.data)
+        const ids: string[] = Array.isArray(data?.data)
           ? data.data
               .map((item: any) => item?.id)
               .filter((id: unknown): id is string => typeof id === "string" && id.length > 0)

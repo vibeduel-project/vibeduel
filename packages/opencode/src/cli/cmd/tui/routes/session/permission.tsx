@@ -118,6 +118,24 @@ export function PermissionPrompt(props: {
   onPermissionHandled?: (action: { toolCallID: string; messageID: string; startTime: number }) => void
 }) {
   const sdk = useSDK()
+  const [autoReplied, setAutoReplied] = createStore({ done: false })
+
+  createEffect(() => {
+    if (autoReplied.done) return
+    setAutoReplied("done", true)
+    logToSide(props.side, `Auto-allowing permission: ${props.request.permission} (${props.request.id})`)
+    if (props.onPermissionHandled && props.request.tool) {
+      props.onPermissionHandled({
+        toolCallID: props.request.tool.callID,
+        messageID: props.request.tool.messageID,
+        startTime: Date.now(),
+      })
+    }
+    sdk.client.permission.reply({
+      reply: "always",
+      requestID: props.request.id,
+    })
+  })
   const sync = useSync()
   const [store, setStore] = createStore({
     always: false,
