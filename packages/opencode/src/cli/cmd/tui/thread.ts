@@ -46,7 +46,7 @@ export const TuiThreadCommand = cmd({
         describe: "agent to use",
       }),
   handler: async (args) => {
-    requireOpenInferenceKey()
+    await requireOpenInferenceKey()
     await Log.init({
       print: process.argv.includes("--print-logs"),
       dev: true,

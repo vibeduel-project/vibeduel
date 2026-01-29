@@ -182,31 +182,42 @@ export function Session() {
   const [rightColor, setRightColor] = createSignal<string | RGBA | undefined>(undefined)
   const [awaitingVote, setAwaitingVote] = createSignal(false)
   const [lastChosenSessionID, setLastChosenSessionID] = createSignal<string | undefined>(undefined)
-  const [duelHover, setDuelHover] = createSignal(false)
+  const [lastToggleAt, setLastToggleAt] = createSignal(0)
+  const [autoDuelDone, setAutoDuelDone] = createSignal(false)
 
   const [controlSide, setControlSide] = createSignal<"left" | "right">("right")
   const [scrollToBottomLeft, setScrollToBottomLeft] = createSignal<(() => void) | undefined>(undefined)
   const [scrollToBottomRight, setScrollToBottomRight] = createSignal<(() => void) | undefined>(undefined)
 
-  useKeyboard(
-    (key) => {
-      // Only handle arrow keys for voting when awaiting vote
-      if (isSplit() && promptDisabled()) {
-        if (key.name === "left") {
-          setLeftColor(theme.success)
-          setRightColor(undefined)
-          setControlSide("left")
-          finalizeVote("left")
-        }
-        if (key.name === "right") {
-          setRightColor(theme.success)
-          setLeftColor(undefined)
-          setControlSide("right")
-          finalizeVote("right")
-        }
+  useKeyboard((key) => {
+    if (key.ctrl && key.name === "r") {
+      const now = Date.now()
+      if (now - lastToggleAt() < 250) return
+      setLastToggleAt(now)
+      if (isSplit()) {
+        exitDuel()
+      } else {
+        void enterDuel()
+      }
+      return
+    }
+
+    // Only handle arrow keys for voting when awaiting vote
+    if (isSplit() && promptDisabled()) {
+      if (key.name === "left") {
+        setLeftColor(theme.success)
+        setRightColor(undefined)
+        setControlSide("left")
+        finalizeVote("left")
+      }
+      if (key.name === "right") {
+        setRightColor(theme.success)
+        setLeftColor(undefined)
+        setControlSide("right")
+        finalizeVote("right")
       }
     }
-  )
+  })
 
   const promptSessionID = createMemo(() => route.sessionID)
   const messages = createMemo(() => sync.data.message[promptSessionID()] ?? [])
@@ -259,6 +270,10 @@ export function Session() {
       prompt.set(route.initialPrompt)
     }
   })
+
+  createEffect(on(() => route.sessionID, () => {
+    setAutoDuelDone(false)
+  }))
 
   createEffect(() => {
     if (isSplit()) return
@@ -319,6 +334,13 @@ export function Session() {
     }
   }
 
+  createEffect(() => {
+    if (autoDuelDone()) return
+    if (isSplit()) return
+    setAutoDuelDone(true)
+    void enterDuel()
+  })
+
   const exitDuel = () => {
     if (!route.rightSessionID) return
     // Use last voted session, or default to left side if no vote happened
@@ -335,14 +357,6 @@ export function Session() {
       sessionID: selectedID,
       rightSessionID: undefined,
     })
-  }
-
-  const toggleDuel = () => {
-    if (isSplit()) {
-      exitDuel()
-    } else {
-      void enterDuel()
-    }
   }
 
   return (
@@ -411,17 +425,11 @@ export function Session() {
             </Show>
           </box>
           <box flexDirection="column" alignItems="flex-end">
-            <box
-              border={["left", "right", "top", "bottom"]}
-              borderColor={isSplit() ? theme.success : theme.border}
-              paddingLeft={1}
-              paddingRight={1}
-              backgroundColor={duelHover() ? theme.backgroundMenu : undefined}
-              onMouseOver={() => setDuelHover(true)}
-              onMouseOut={() => setDuelHover(false)}
-              onMouseUp={toggleDuel}
-            >
-              <text fg={isSplit() ? theme.success : theme.text}>Reload Credits</text>
+            <box flexDirection="row" gap={1} alignItems="center">
+              <text fg={isSplit() ? theme.success : theme.textMuted} wrapMode="none">
+                Reload {isSplit() ? "On" : "Off"}
+              </text>
+              <text fg={theme.textMuted} wrapMode="none">Ctrl+R</text>
             </box>
             <box flexDirection="row" gap={2} alignItems="center">
               <text fg={theme.textMuted} wrapMode="none">

@@ -22,7 +22,7 @@ export const AttachCommand = cmd({
         describe: "session id to continue",
       }),
   handler: async (args) => {
-    requireOpenInferenceKey()
+    await requireOpenInferenceKey()
     if (args.dir) process.chdir(args.dir)
     await tui({
       url: args.url,

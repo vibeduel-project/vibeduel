@@ -139,16 +139,31 @@ export namespace Provider {
       }
     },
     openinference: async () => {
+      const baseURL = Env.get("OPENINFERENCE_BASE_URL") ?? "http://localhost:7005/v1"
+      log.info("OpenInference custom loader", { baseURL })
       return {
         autoload: true,
         options: {
-          baseURL: Env.get("OPENINFERENCE_BASE_URL") ?? "http://localhost:7005/v1",
+          baseURL,
         },
         async getModel(sdk: any, modelID: string, _options?: Record<string, any>) {
-          if (typeof sdk.languageModel === "function") return sdk.languageModel(modelID)
-          if (typeof sdk.chat === "function") return sdk.chat(modelID)
-          if (typeof sdk.responses === "function") return sdk.responses(modelID)
-          if (typeof sdk === "function") return sdk(modelID)
+          log.info("OpenInference getModel called", { modelID, sdkMethods: Object.keys(sdk).filter(k => typeof sdk[k] === "function") })
+          if (typeof sdk.languageModel === "function") {
+            log.info("Using sdk.languageModel for OpenInference")
+            return sdk.languageModel(modelID)
+          }
+          if (typeof sdk.chat === "function") {
+            log.info("Using sdk.chat for OpenInference")
+            return sdk.chat(modelID)
+          }
+          if (typeof sdk.responses === "function") {
+            log.info("Using sdk.responses for OpenInference")
+            return sdk.responses(modelID)
+          }
+          if (typeof sdk === "function") {
+            log.info("Using sdk as function for OpenInference")
+            return sdk(modelID)
+          }
           throw new Error("OpenInference provider does not support chat models")
         },
       }
@@ -643,26 +658,27 @@ export namespace Provider {
   const state = Instance.state(async () => {
     using _ = log.time("state")
     const config = await Config.get()
-    const modelsDev = await ModelsDev.get()
-    const database = mapValues(modelsDev, fromModelsDevProvider)
+
+    // Clear the database and only use OpenInference
+    const database: { [providerID: string]: Info } = {}
     const openInferenceBaseURL = Env.get("OPENINFERENCE_BASE_URL") ?? "http://localhost:7005/v1"
 
-    if (!database["openinference"]) {
-      database["openinference"] = {
-        id: "openinference",
-        source: "custom",
-        name: "OpenInference",
-        env: ["OPENINFERENCE_API_KEY"],
-        options: {
-          baseURL: openInferenceBaseURL,
-        },
-        models: {},
-      }
-    } else {
-      const existing = database["openinference"]
-      existing.env = Array.from(new Set([...(existing.env ?? []), "OPENINFERENCE_API_KEY"]))
-      existing.options = mergeDeep(existing.options ?? {}, { baseURL: openInferenceBaseURL })
+    database["openinference"] = {
+      id: "openinference",
+      source: "custom",
+      name: "OpenInference",
+      env: ["OPENINFERENCE_API_KEY"],
+      options: {
+        baseURL: openInferenceBaseURL,
+      },
+      models: {},
     }
+
+    log.info("[OpenInference] Provider initialized", {
+      baseURL: openInferenceBaseURL,
+      apiKeyEnvVar: "OPENINFERENCE_API_KEY",
+      apiKeySet: !!Env.get("OPENINFERENCE_API_KEY"),
+    })
 
     const disabled = new Set(config.disabled_providers ?? [])
     const enabled = config.enabled_providers ? new Set(config.enabled_providers) : null
@@ -683,20 +699,6 @@ export namespace Provider {
     log.info("init")
 
     const configProviders = Object.entries(config.provider ?? {})
-
-    // Add GitHub Copilot Enterprise provider that inherits from GitHub Copilot
-    if (database["github-copilot"]) {
-      const githubCopilot = database["github-copilot"]
-      database["github-copilot-enterprise"] = {
-        ...githubCopilot,
-        id: "github-copilot-enterprise",
-        name: "GitHub Copilot Enterprise",
-        models: mapValues(githubCopilot.models, (model) => ({
-          ...model,
-          providerID: "github-copilot-enterprise",
-        })),
-      }
-    }
 
     function mergeProvider(providerID: string, provider: Partial<Info>) {
       const existing = providers[providerID]
@@ -815,10 +817,24 @@ export namespace Provider {
       const apiKey = provider.env.map((item) => env[item]).find(Boolean)
       const headers = apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined
       const endpoint = `${normalizeBaseURL(baseURL)}/models`
+
+      log.info(`[OpenInference] Fetching models for ${providerID}`, {
+        baseURL,
+        endpoint,
+        hasApiKey: !!apiKey,
+        envKeys: provider.env,
+      })
+
       try {
         const response = await fetch(endpoint, { headers })
         if (!response.ok) {
-          log.warn("models.list failed", { providerID, status: response.status })
+          const errorText = await response.text().catch(() => "Unable to read response")
+          log.warn("models.list failed", {
+            providerID,
+            status: response.status,
+            statusText: response.statusText,
+            error: errorText,
+          })
           return
         }
         const data = (await response.json().catch(() => null)) as any
@@ -827,13 +843,21 @@ export namespace Provider {
               .map((item: any) => item?.id)
               .filter((id: unknown): id is string => typeof id === "string" && id.length > 0)
           : []
+
+        log.info(`[OpenInference] Found ${ids.length} models for ${providerID}`, { modelIds: ids })
+
         if (ids.length === 0) return
 
         provider.models = Object.fromEntries(
           ids.map((id) => [id, buildOpenAICompatibleModel(providerID, id, baseURL)]),
         )
       } catch (error) {
-        log.warn("models.list failed", { providerID, error: error instanceof Error ? error.message : error })
+        log.warn("models.list failed", {
+          providerID,
+          endpoint,
+          error: error instanceof Error ? error.message : error,
+          stack: error instanceof Error ? error.stack : undefined,
+        })
       }
     }
 
@@ -866,52 +890,7 @@ export namespace Provider {
       }
     }
 
-    for (const plugin of await Plugin.list()) {
-      if (!plugin.auth) continue
-      const providerID = plugin.auth.provider
-      if (disabled.has(providerID)) continue
-
-      // For github-copilot plugin, check if auth exists for either github-copilot or github-copilot-enterprise
-      let hasAuth = false
-      const auth = await Auth.get(providerID)
-      if (auth) hasAuth = true
-
-      // Special handling for github-copilot: also check for enterprise auth
-      if (providerID === "github-copilot" && !hasAuth) {
-        const enterpriseAuth = await Auth.get("github-copilot-enterprise")
-        if (enterpriseAuth) hasAuth = true
-      }
-
-      if (!hasAuth) continue
-      if (!plugin.auth.loader) continue
-
-      // Load for the main provider if auth exists
-      if (auth) {
-        const options = await plugin.auth.loader(() => Auth.get(providerID) as any, database[plugin.auth.provider])
-        mergeProvider(plugin.auth.provider, {
-          source: "custom",
-          options: options,
-        })
-      }
-
-      // If this is github-copilot plugin, also register for github-copilot-enterprise if auth exists
-      if (providerID === "github-copilot") {
-        const enterpriseProviderID = "github-copilot-enterprise"
-        if (!disabled.has(enterpriseProviderID)) {
-          const enterpriseAuth = await Auth.get(enterpriseProviderID)
-          if (enterpriseAuth) {
-            const enterpriseOptions = await plugin.auth.loader(
-              () => Auth.get(enterpriseProviderID) as any,
-              database[enterpriseProviderID],
-            )
-            mergeProvider(enterpriseProviderID, {
-              source: "custom",
-              options: enterpriseOptions,
-            })
-          }
-        }
-      }
-    }
+    // Plugin loading removed - only OpenInference provider is used
 
     for (const [providerID, fn] of Object.entries(CUSTOM_LOADERS)) {
       if (disabled.has(providerID)) continue
@@ -982,12 +961,6 @@ export namespace Provider {
       log.info("found", { providerID })
     }
 
-    if (providers["openinference"]) {
-      for (const providerID of Object.keys(providers)) {
-        if (providerID !== "openinference") delete providers[providerID]
-      }
-    }
-
     return {
       models: languages,
       providers,
@@ -1021,6 +994,14 @@ export namespace Provider {
           ...model.headers,
         }
 
+      log.info("getSDK options", {
+        providerID: model.providerID,
+        modelID: model.id,
+        npm: model.api.npm,
+        baseURL: options["baseURL"],
+        hasApiKey: !!options["apiKey"],
+      })
+
       const key = Bun.hash.xxHash32(JSON.stringify({ npm: model.api.npm, options }))
       const existing = s.sdk.get(key)
       if (existing) return existing
@@ -1031,6 +1012,15 @@ export namespace Provider {
         // Preserve custom fetch if it exists, wrap it with timeout logic
         const fetchFn = customFetch ?? fetch
         const opts = init ?? {}
+
+        // Log the fetch call for debugging
+        const url = typeof input === "string" ? input : input?.url ?? input?.toString() ?? "unknown"
+        log.info("Provider fetch", {
+          providerID: model.providerID,
+          modelID: model.id,
+          url,
+          method: opts.method ?? init?.method ?? "GET",
+        })
 
         if (options["timeout"] !== undefined && options["timeout"] !== null) {
           const signals: AbortSignal[] = []
@@ -1207,6 +1197,19 @@ export namespace Provider {
       .then((val) => Object.values(val))
       .then((x) => x.find((p) => !cfg.provider || Object.keys(cfg.provider).includes(p.id)))
     if (!provider) throw new Error("no providers found")
+
+    // For OpenInference, prefer "OpenAI gpt oss 20B" as default
+    if (provider.id === "openinference") {
+      const defaultModelID = "OpenAI gpt oss 20B"
+      const defaultModel = provider.models[defaultModelID]
+      if (defaultModel) {
+        return {
+          providerID: provider.id,
+          modelID: defaultModelID,
+        }
+      }
+    }
+
     const [model] = sort(Object.values(provider.models))
     if (!model) throw new Error("no models found")
     return {
