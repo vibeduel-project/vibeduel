@@ -816,7 +816,9 @@ export namespace Provider {
 
       const apiKey = provider.env.map((item) => env[item]).find(Boolean)
       const headers = apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined
-      const endpoint = `${normalizeBaseURL(baseURL)}/models`
+      const endpoint = providerID === "openinference"
+        ? `${normalizeBaseURL(baseURL)}/usable_models`
+        : `${normalizeBaseURL(baseURL)}/models`
 
       log.info(`[OpenInference] Fetching models for ${providerID}`, {
         baseURL,
@@ -838,11 +840,13 @@ export namespace Provider {
           return
         }
         const data = (await response.json().catch(() => null)) as any
-        const ids: string[] = Array.isArray(data?.data)
-          ? data.data
-              .map((item: any) => item?.id)
-              .filter((id: unknown): id is string => typeof id === "string" && id.length > 0)
-          : []
+        const ids: string[] = providerID === "openinference"
+          ? (Array.isArray(data?.models) ? data.models.filter((id: unknown): id is string => typeof id === "string" && id.length > 0) : [])
+          : (Array.isArray(data?.data)
+              ? data.data
+                  .map((item: any) => item?.id)
+                  .filter((id: unknown): id is string => typeof id === "string" && id.length > 0)
+              : [])
 
         log.info(`[OpenInference] Found ${ids.length} models for ${providerID}`, { modelIds: ids })
 
