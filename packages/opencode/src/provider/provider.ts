@@ -139,7 +139,7 @@ export namespace Provider {
       }
     },
     openinference: async () => {
-      const baseURL = Env.get("OPENINFERENCE_BASE_URL") ?? "http://localhost:7005/v1"
+      const baseURL = Env.get("OPENINFERENCE_BASE_URL") ?? "http://localhost:7001/v1"
       log.info("OpenInference custom loader", { baseURL })
       return {
         autoload: true,
@@ -661,7 +661,7 @@ export namespace Provider {
 
     // Clear the database and only use OpenInference
     const database: { [providerID: string]: Info } = {}
-    const openInferenceBaseURL = Env.get("OPENINFERENCE_BASE_URL") ?? "http://localhost:7005/v1"
+    const openInferenceBaseURL = Env.get("OPENINFERENCE_BASE_URL") ?? "http://localhost:7001/v1"
 
     database["openinference"] = {
       id: "openinference",

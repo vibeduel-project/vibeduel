@@ -107,7 +107,45 @@ export function Home() {
               promptRef.set(r)
             }}
             hint={Hint}
-            onSubmit={async (sessionID) => {
+            compareMode={true}
+            onSubmit={async (sessionID, promptInfo) => {
+              try {
+                const rightSession = await sdk.client.session.create({})
+                if (rightSession.data?.id) {
+                  const rightSessionID = rightSession.data.id
+                  const selectedModel = local.model.current()
+                  const nonTextParts = promptInfo.parts.filter((part) => part.type !== "text")
+
+                  sdk.client.session.prompt({
+                    sessionID: rightSessionID,
+                    messageID: Identifier.ascending("message"),
+                    agent: local.agent.current().name,
+                    model: selectedModel!,
+                    variant: local.model.variant.current(),
+                    parts: [
+                      {
+                        id: Identifier.ascending("part"),
+                        type: "text" as const,
+                        text: promptInfo.input,
+                      },
+                      ...nonTextParts.map((x) => ({
+                        id: Identifier.ascending("part"),
+                        ...x,
+                      })),
+                    ],
+                    system: "You are response B. Answer in a short paragraph without bullets.",
+                  })
+
+                  navigate({
+                    type: "session",
+                    sessionID,
+                    rightSessionID,
+                  })
+                  return
+                }
+              } catch {
+                // fall back to single-session view
+              }
               navigate({
                 type: "session",
                 sessionID,
