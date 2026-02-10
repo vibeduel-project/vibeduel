@@ -415,6 +415,7 @@ export function Session() {
     // Clear all pairwise state immediately
     setAwaitingVote(false)
     setPendingForkWinner(undefined)
+    setModelReveal(undefined)
     setLeftColor(undefined)
     setRightColor(undefined)
     setLastChosenSessionID(undefined)
