@@ -91,3 +91,8 @@ Known Issues:
 - Agent freeze: On round 3, right agent froze during tool use (bash
   permission). Left session ID changed unexpectedly, likely related to
   permission system session forking during tool use.
+
+
+CRITICAL FOR DEBUGGING - LOG FILE PATHS:
+- /home/mark/.local/share/opencode/log/dev.log
+- /home/mark/.local/share/opencode/log/dev-tui.log

@@ -533,8 +533,16 @@ export function Session() {
                       borderColor={leftColor() ?? theme.border}
                       paddingLeft={1}
                       paddingRight={1}
-                      onMouseUp={() => {
-                        duelLog.info("vote clicked: left")
+                      onMouseUp={(e: any) => {
+                        duelLog.info("vote clicked: left", {
+                          eventType: e?.type,
+                          timestamp: Date.now(),
+                          button: e?.button,
+                          detail: e?.detail,
+                          target: e?.target?.toString?.(),
+                          currentTarget: e?.currentTarget?.toString?.(),
+                          stackTrace: new Error().stack,
+                        })
                         setLeftColor(theme.success)
                         setRightColor(undefined)
                         setControlSide("left")
@@ -548,8 +556,16 @@ export function Session() {
                       borderColor={rightColor() ?? theme.border}
                       paddingLeft={1}
                       paddingRight={1}
-                      onMouseUp={() => {
-                        duelLog.info("vote clicked: right")
+                      onMouseUp={(e: any) => {
+                        duelLog.info("vote clicked: right", {
+                          eventType: e?.type,
+                          timestamp: Date.now(),
+                          button: e?.button,
+                          detail: e?.detail,
+                          target: e?.target?.toString?.(),
+                          currentTarget: e?.currentTarget?.toString?.(),
+                          stackTrace: new Error().stack,
+                        })
                         setRightColor(theme.success)
                         setLeftColor(undefined)
                         setControlSide("right")
@@ -645,6 +661,8 @@ export function Session() {
                       duelLog.info("prompt submitted in split mode, setting awaitingVote=true", { duelSessionId })
                       setCurrentDuelId(duelSessionId)
                       setModelReveal(undefined)
+                      setLeftColor(undefined)
+                      setRightColor(undefined)
                       setAwaitingVote(true)
                     }
                   }}
