@@ -85,13 +85,14 @@ Duel Flow (per round):
 
 Known Issues:
 -------------
-- Double-vote bug: onMouseUp fires twice on vote button click, submitting
-  the vote twice to the backend and double-counting ELO. Needs a guard
-  in finalizeVote to prevent re-entry.
 - Agent freeze: On round 3, right agent froze during tool use (bash
   permission). Left session ID changed unexpectedly, likely related to
   permission system session forking during tool use.
 
+Potentially Fixed Issues - monitoring:
+- Double-vote bug: onMouseUp fires twice on vote button click, submitting
+  the vote twice to the backend and double-counting ELO. Needs a guard
+  in finalizeVote to prevent re-entry.
 
 CRITICAL FOR DEBUGGING - LOG FILE PATHS:
 - /home/mark/.local/share/opencode/log/dev.log

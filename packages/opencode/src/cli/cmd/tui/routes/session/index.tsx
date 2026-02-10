@@ -316,8 +316,13 @@ export function Session() {
     setRightColor(undefined)
   })
 
+  // Guard against double-fire: @opentui renderer dispatches mouseup twice when
+  // capturedRenderable is set (falls through after handling captured element)
+  const [voteInFlight, setVoteInFlight] = createSignal(false)
   const finalizeVote = async (side: "left" | "right") => {
     if (!route.rightSessionID) return
+    if (voteInFlight()) return
+    setVoteInFlight(true)
     const winningID = side === "left" ? route.sessionID : route.rightSessionID
     const losingID = side === "left" ? route.rightSessionID : route.sessionID
     // left prompt is sent first, so left="a", right="b" on the backend
@@ -366,6 +371,7 @@ export function Session() {
     // Store the winning side so the fork happens when the next message is sent
     setPendingForkWinner(side)
     setAwaitingVote(false)
+    setVoteInFlight(false)
   }
 
   const enterDuel = async () => {
