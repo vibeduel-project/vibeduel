@@ -7,9 +7,9 @@ import { useSDK } from "../../context/sdk"
 import { SplitBorder } from "../../component/border"
 import { useSync } from "../../context/sync"
 import path from "path"
-import { appendFile } from "node:fs/promises"
 import { LANGUAGE_EXTENSIONS } from "@/lsp/language"
 import { Locale } from "@/util/locale"
+import { Log } from "@/util/log"
 
 function normalizePath(input?: string) {
   if (!input) return ""
@@ -29,13 +29,10 @@ function filetype(input?: string) {
   return language
 }
 
+const duelLog = Log.create({ service: "duel" })
+
 function logToSide(side: "left" | "right", text: string) {
-  if (!side) return
-  const filename = side === "left" ? "left.txt" : "right.txt"
-  const filepath = path.join("/Users/mark/opencode", filename)
-  const timestamp = new Date().toISOString()
-  const content = `[${timestamp}]\n${text}\n-------------------\n`
-  appendFile(filepath, content).catch(console.error)
+  duelLog.info(text, { side })
 }
 
 const promptStartTimes: Record<string, number> = {}

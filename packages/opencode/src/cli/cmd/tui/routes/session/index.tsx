@@ -12,7 +12,6 @@ import {
 } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import path from "path"
-import { appendFile } from "node:fs/promises"
 import { useRoute, useRouteData } from "@tui/context/route"
 import { useSync } from "@tui/context/sync"
 import { SplitBorder } from "@tui/component/border"
@@ -54,12 +53,7 @@ import { Identifier } from "@/id/id"
 
 
 function logToSide(side: "left" | "right", text: string) {
-  if (!side) return
-  const filename = side === "left" ? "left.txt" : "right.txt"
-  const filepath = path.join("/Users/mark/opencode", filename)
-  const timestamp = new Date().toISOString()
-  const content = `[${timestamp}]\n${text}\n-------------------\n`
-  appendFile(filepath, content).catch(console.error)
+  duelLog.info(text, { side })
 }
 import { TodoItem } from "../../component/todo-item"
 import { DialogMessage } from "./dialog-message"
@@ -131,6 +125,8 @@ function use() {
   return ctx
 }
 
+const duelLog = Log.create({ service: "duel" })
+
 export function Session() {
   const route = useRouteData("session")
   const { navigate } = useRoute()
@@ -180,7 +176,16 @@ export function Session() {
   // Button colors
   const [leftColor, setLeftColor] = createSignal<string | RGBA | undefined>(undefined)
   const [rightColor, setRightColor] = createSignal<string | RGBA | undefined>(undefined)
-  const [awaitingVote, setAwaitingVote] = createSignal(false)
+  // When navigating from home.tsx, the prompt was already submitted before this component mounts,
+  // so onSubmit (which sets awaitingVote=true) never fires. Initialize to isSplit() to cover that case.
+  const initialAwaitingVote = isSplit()
+  duelLog.info("session mount", {
+    isSplit: initialAwaitingVote,
+    awaitingVoteInitial: initialAwaitingVote,
+    leftSessionID: route.sessionID,
+    rightSessionID: route.rightSessionID,
+  })
+  const [awaitingVote, setAwaitingVote] = createSignal(initialAwaitingVote)
   const [lastChosenSessionID, setLastChosenSessionID] = createSignal<string | undefined>(undefined)
   const [lastToggleAt, setLastToggleAt] = createSignal(0)
   const [autoDuelDone, setAutoDuelDone] = createSignal(false)
@@ -202,21 +207,6 @@ export function Session() {
       return
     }
 
-    // Only handle arrow keys for voting when awaiting vote
-    if (isSplit() && promptDisabled()) {
-      if (key.name === "left") {
-        setLeftColor(theme.success)
-        setRightColor(undefined)
-        setControlSide("left")
-        finalizeVote("left")
-      }
-      if (key.name === "right") {
-        setRightColor(theme.success)
-        setLeftColor(undefined)
-        setControlSide("right")
-        finalizeVote("right")
-      }
-    }
   })
 
   const promptSessionID = createMemo(() => route.sessionID)
@@ -260,7 +250,41 @@ export function Session() {
     if (!route.rightSessionID && s?.parentID) return false
     return promptPermissions().length === 0
   })
-  const promptDisabled = createMemo(() => isSplit() && awaitingVote())
+  // Check if the last assistant message in a session is done (has time.completed set)
+  const leftMessages = createMemo(() => sync.data.message[route.sessionID] ?? [])
+  const rightMessages = createMemo(() => route.rightSessionID ? (sync.data.message[route.rightSessionID] ?? []) : [])
+  const leftDone = createMemo(() => {
+    const last = leftMessages().findLast((x) => x.role === "assistant")
+    return !!last?.time.completed
+  })
+  const rightDone = createMemo(() => {
+    const last = rightMessages().findLast((x) => x.role === "assistant")
+    return !!last?.time.completed
+  })
+  const bothDone = createMemo(() => leftDone() && rightDone())
+
+  const promptDisabled = createMemo(() => isSplit() && awaitingVote() && bothDone())
+
+  createEffect(() => {
+    const split = isSplit()
+    const awaiting = awaitingVote()
+    const both = bothDone()
+    const prompt = showPrompt()
+    const disabled = promptDisabled()
+    const visible = prompt && disabled
+    duelLog.info("vote-buttons visibility changed", {
+      visible,
+      showPrompt: prompt,
+      promptDisabled: disabled,
+      isSplit: split,
+      awaitingVote: awaiting,
+      bothDone: both,
+      leftDone: leftDone(),
+      rightDone: rightDone(),
+      leftSessionID: route.sessionID,
+      rightSessionID: route.rightSessionID,
+    })
+  })
 
   const promptMaxWidth = createMemo(() => Math.min(96, Math.max(0, dimensions().width - 4)))
 
@@ -277,6 +301,7 @@ export function Session() {
 
   createEffect(() => {
     if (isSplit()) return
+    duelLog.info("not split, clearing vote state")
     setAwaitingVote(false)
     setLeftColor(undefined)
     setRightColor(undefined)
@@ -285,6 +310,12 @@ export function Session() {
   const finalizeVote = async (side: "left" | "right") => {
     if (!route.rightSessionID) return
     const winningID = side === "left" ? route.sessionID : route.rightSessionID
+    const losingID = side === "left" ? route.rightSessionID : route.sessionID
+    duelLog.info("finalizeVote", {
+      side,
+      winningSessionID: winningID,
+      losingSessionID: losingID,
+    })
 
     setLastChosenSessionID(winningID)
     setControlSide(side)
@@ -317,10 +348,15 @@ export function Session() {
   }
 
   const enterDuel = async () => {
-    if (isSplit()) return
+    if (isSplit()) {
+      duelLog.info("enterDuel skipped, already split")
+      return
+    }
+    duelLog.info("enterDuel starting", { sessionID: route.sessionID })
     try {
       const fork = await sdk.client.session.fork({ sessionID: route.sessionID })
       if (!fork.data) throw new Error("No session id returned")
+      duelLog.info("enterDuel forked", { leftSessionID: route.sessionID, rightSessionID: fork.data.id })
       navigate({
         type: "session",
         sessionID: route.sessionID,
@@ -345,6 +381,10 @@ export function Session() {
     if (!route.rightSessionID) return
     // Use last voted session, or default to left side if no vote happened
     const selectedID = lastChosenSessionID() ?? route.sessionID
+    duelLog.info("exitDuel", {
+      selectedSessionID: selectedID,
+      hadVote: !!lastChosenSessionID(),
+    })
 
     // Clear all pairwise state immediately
     setAwaitingVote(false)
@@ -473,6 +513,7 @@ export function Session() {
                       paddingLeft={1}
                       paddingRight={1}
                       onMouseUp={() => {
+                        duelLog.info("vote clicked: left")
                         setLeftColor(theme.success)
                         setRightColor(undefined)
                         setControlSide("left")
@@ -487,6 +528,7 @@ export function Session() {
                       paddingLeft={1}
                       paddingRight={1}
                       onMouseUp={() => {
+                        duelLog.info("vote clicked: right")
                         setRightColor(theme.success)
                         setLeftColor(undefined)
                         setControlSide("right")
@@ -495,7 +537,7 @@ export function Session() {
                     >
                       <text fg={rightColor() ?? theme.text}>Right</text>
                     </box>
-                    <text fg={theme.textMuted}>select side (←/→)</text>
+                    <text fg={theme.textMuted}>click to vote</text>
                   </box>
                 </Show>
                 <Prompt
@@ -511,7 +553,10 @@ export function Session() {
                   onSubmit={() => {
                     const scrollFn = isSplit() ? scrollToBottomRight() : scrollToBottomLeft()
                     scrollFn?.()
-                    if (isSplit()) setAwaitingVote(true)
+                    if (isSplit()) {
+                      duelLog.info("prompt submitted in split mode, setting awaitingVote=true")
+                      setAwaitingVote(true)
+                    }
                   }}
                   sessionID={promptSessionID()}
                 />
@@ -630,11 +675,9 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
   const toast = useToast()
   const sdk = useSDK()
 
-  // Simple Logging for Prototype
   const [lastLoggedID, setLastLoggedID] = createSignal<string | null>(null)
   createEffect(() => {
     const msg = lastAssistant()
-    // Check if message exists, is finished, and hasn't been logged yet
     if (!msg || !msg.time.completed || msg.id === lastLoggedID()) return
 
     const parts = sync.data.part[msg.id] ?? []
@@ -643,20 +686,13 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
       .map(p => p.text)
       .join("")
 
-    // Determine filename based on side
-    if (props.side === "left" || props.side === "right") {
-      const filename = props.side === "left" ? "left.txt" : "right.txt"
-      const filepath = path.join("/Users/mark/opencode", filename)
-
-      const timestamp = new Date().toISOString()
-      const content = `[${timestamp}]\n${text}\n-------------------\n`
-
-      appendFile(filepath, content).catch(err => {
-        console.error(`Failed to write to ${filename}:`, err)
-      })
-
-      setLastLoggedID(msg.id)
-    }
+    duelLog.info("assistant message completed", {
+      side: props.side,
+      sessionID: props.sessionID,
+      messageID: msg.id,
+      textLength: text.length,
+    })
+    setLastLoggedID(msg.id)
   })
 
   let scroll: ScrollBoxRenderable
