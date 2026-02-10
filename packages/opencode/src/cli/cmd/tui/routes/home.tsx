@@ -16,6 +16,7 @@ import { useCommandDialog } from "../component/dialog-command"
 import { useSDK } from "@tui/context/sdk"
 import { useLocal } from "../context/local"
 import { Identifier } from "@/id/id"
+import { generateDuelId } from "@/duel"
 
 // TODO: what is the best way to do this?
 let once = false
@@ -108,7 +109,7 @@ export function Home() {
             }}
             hint={Hint}
             compareMode={true}
-            onSubmit={async (sessionID, promptInfo) => {
+            onSubmit={async (sessionID, promptInfo, duelSessionId) => {
               try {
                 const rightSession = await sdk.client.session.create({})
                 if (rightSession.data?.id) {
@@ -133,7 +134,7 @@ export function Home() {
                         ...x,
                       })),
                     ],
-                    system: "You are response B. Answer in a short paragraph without bullets.",
+                    duelSessionId,
                   })
 
                   navigate({

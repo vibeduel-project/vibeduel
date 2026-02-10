@@ -14,6 +14,7 @@ import { LLM } from "./llm"
 import { Config } from "@/config/config"
 import { SessionCompaction } from "./compaction"
 import { PermissionNext } from "@/permission/next"
+import { getDuel } from "@/duel"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -49,6 +50,11 @@ export namespace SessionProcessor {
           try {
             let currentText: MessageV2.TextPart | undefined
             let reasoningMap: Record<string, MessageV2.ReasoningPart> = {}
+            const duelSessionId = getDuel(input.sessionID)
+            if (duelSessionId) {
+              log.info("injecting duel session", { sessionID: input.sessionID, duelSessionId })
+              streamInput.duelSessionId = duelSessionId
+            }
             const stream = await LLM.stream(streamInput)
 
             for await (const value of stream.fullStream) {

@@ -36,6 +36,7 @@ export namespace LLM {
     small?: boolean
     tools: Record<string, Tool>
     retries?: number
+    duelSessionId?: string
   }
 
   export type StreamOutput = StreamTextResult<ToolSet, unknown>
@@ -51,6 +52,7 @@ export namespace LLM {
     l.info("stream", {
       modelID: input.model.id,
       providerID: input.model.providerID,
+      duelSessionId: input.duelSessionId,
     })
     const [language, cfg] = await Promise.all([Provider.getLanguage(input.model), Config.get()])
 
@@ -169,6 +171,7 @@ export namespace LLM {
             }
           : undefined),
         ...input.model.headers,
+        ...(input.duelSessionId ? { "x-duel-session-id": input.duelSessionId } : undefined),
       },
       maxRetries: input.retries ?? 0,
       messages: [

@@ -1036,6 +1036,18 @@ export namespace Provider {
           opts.signal = combined
         }
 
+        // Duel mode: if x-duel-session-id header is present, rewrite body
+        const headers = opts.headers as Record<string, string> | undefined
+        const duelId = headers?.["x-duel-session-id"]
+        if (duelId && opts.body && typeof opts.body === "string" && url.includes("/chat/completions")) {
+          const body = JSON.parse(opts.body)
+          const originalModel = body.model
+          body.model = "duel"
+          body.session_id = duelId
+          opts.body = JSON.stringify(body)
+          log.info("Duel fetch rewrite", { duelId, originalModel, url })
+        }
+
         return fetchFn(input, {
           ...opts,
           // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682

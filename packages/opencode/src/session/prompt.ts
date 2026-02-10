@@ -44,6 +44,7 @@ import { SessionStatus } from "./status"
 import { LLM } from "./llm"
 import { iife } from "@/util/iife"
 import { Shell } from "@/shell/shell"
+import { setDuel, clearDuel } from "@/duel"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -100,6 +101,7 @@ export namespace SessionPrompt {
       ),
     system: z.string().optional(),
     variant: z.string().optional(),
+    duelSessionId: z.string().optional(),
     parts: z.array(
       z.discriminatedUnion("type", [
         MessageV2.TextPart.omit({
@@ -175,7 +177,18 @@ export namespace SessionPrompt {
       return message
     }
 
-    return loop(input.sessionID)
+    if (input.duelSessionId) {
+      log.info("duel mode active", { sessionID: input.sessionID, duelSessionId: input.duelSessionId })
+      setDuel(input.sessionID, input.duelSessionId)
+    }
+
+    try {
+      return await loop(input.sessionID)
+    } finally {
+      if (input.duelSessionId) {
+        clearDuel(input.sessionID)
+      }
+    }
   })
 
   export async function resolvePromptParts(template: string): Promise<PromptInput["parts"]> {

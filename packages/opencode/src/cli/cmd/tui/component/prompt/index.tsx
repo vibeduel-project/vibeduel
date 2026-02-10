@@ -24,6 +24,7 @@ import { Clipboard } from "../../util/clipboard"
 import type { FilePart } from "@opencode-ai/sdk/v2"
 import { TuiEvent } from "../../event"
 import { iife } from "@/util/iife"
+import { generateDuelId } from "@/duel"
 import { Locale } from "@/util/locale"
 import { createColors, createFrames } from "../../ui/spinner.ts"
 import { useDialog } from "@tui/ui/dialog"
@@ -40,7 +41,7 @@ export type PromptProps = {
   broadcastSessionIDs?: string[]
   compareMode?: boolean
   syncMode?: 'left-to-right' | 'right-to-left'
-  onSubmit?: (sessionID: string, prompt: PromptInfo) => void
+  onSubmit?: (sessionID: string, prompt: PromptInfo, duelSessionId?: string) => void
   ref?: (ref: PromptRef) => void
   hint?: JSX.Element
   showPlaceholder?: boolean
@@ -625,6 +626,8 @@ export function Prompt(props: PromptProps) {
     const currentMode = store.mode
     const variant = local.model.variant.current()
 
+    const duelId = props.compareMode ? generateDuelId() : undefined
+
     if (store.mode === "shell") {
       sdk.client.session.shell({
         sessionID,
@@ -677,7 +680,7 @@ export function Prompt(props: PromptProps) {
           sessionID,
           messageID,
           ...payloadProto,
-          system: "You are response A. Answer concisely in bullet points.",
+          duelSessionId: duelId,
         })
       } else {
         sdk.client.session.prompt({
@@ -692,10 +695,9 @@ export function Prompt(props: PromptProps) {
           for (const targetID of props.broadcastSessionIDs) {
             sdk.client.session.prompt({
               sessionID: targetID,
-              // Use a new message ID for the broadcasted message to avoid potential conflicts
               messageID: Identifier.ascending("message"),
               ...payloadProto,
-              system: "You are response B. Answer in a short paragraph without bullets.",
+              duelSessionId: duelId,
             })
           }
         } else {
@@ -786,7 +788,7 @@ export function Prompt(props: PromptProps) {
 
     // Call onSubmit if provided
     if (props.onSubmit) {
-      props.onSubmit(sessionID, promptInfo)
+      props.onSubmit(sessionID, promptInfo, duelId)
       input.clear()
       return
     }
