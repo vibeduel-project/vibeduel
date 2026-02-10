@@ -141,6 +141,7 @@ export function Home() {
                     type: "session",
                     sessionID,
                     rightSessionID,
+                    duelSessionId,
                   })
                   return
                 }

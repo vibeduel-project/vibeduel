@@ -12,6 +12,7 @@ export type SessionRoute = {
   sessionID: string
   rightSessionID?: string
   initialPrompt?: PromptInfo
+  duelSessionId?: string
 }
 
 export type Route = HomeRoute | SessionRoute
@@ -39,6 +40,7 @@ export const { use: useRoute, provider: RouteProvider } = createSimpleContext({
             sessionID: route.sessionID,
             rightSessionID: route.rightSessionID ?? undefined,
             initialPrompt: route.initialPrompt,
+            duelSessionId: route.duelSessionId,
           } as any)
           return
         }

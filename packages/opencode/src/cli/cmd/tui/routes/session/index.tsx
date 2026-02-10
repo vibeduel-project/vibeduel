@@ -182,10 +182,14 @@ export function Session() {
   duelLog.info("session mount", {
     isSplit: initialAwaitingVote,
     awaitingVoteInitial: initialAwaitingVote,
+    duelSessionId: route.duelSessionId,
     leftSessionID: route.sessionID,
     rightSessionID: route.rightSessionID,
   })
   const [awaitingVote, setAwaitingVote] = createSignal(initialAwaitingVote)
+  // Track the duel session ID for voting. On mount (first round from home), read from route.
+  // On subsequent rounds, captured from Prompt's onSubmit callback.
+  const [currentDuelId, setCurrentDuelId] = createSignal<string | undefined>(route.duelSessionId)
   const [lastChosenSessionID, setLastChosenSessionID] = createSignal<string | undefined>(undefined)
   const [lastToggleAt, setLastToggleAt] = createSignal(0)
   const [autoDuelDone, setAutoDuelDone] = createSignal(false)
@@ -311,11 +315,40 @@ export function Session() {
     if (!route.rightSessionID) return
     const winningID = side === "left" ? route.sessionID : route.rightSessionID
     const losingID = side === "left" ? route.rightSessionID : route.sessionID
+    // left prompt is sent first, so left="a", right="b" on the backend
+    const winner = side === "left" ? "a" : "b"
+    const duelId = currentDuelId()
     duelLog.info("finalizeVote", {
       side,
+      winner,
+      duelSessionId: duelId,
       winningSessionID: winningID,
       losingSessionID: losingID,
     })
+
+    // Submit vote to backend
+    if (duelId) {
+      const baseURL = process.env["OPENINFERENCE_BASE_URL"] ?? "http://localhost:7001/v1"
+      const apiKey = process.env["OPENINFERENCE_API_KEY"]
+      const res = await fetch(`${baseURL.replace(/\/v1$/, "")}/v1/duel/vote`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        },
+        body: JSON.stringify({ duel_session_id: duelId, winner }),
+      })
+      const result = await res.json()
+      duelLog.info("vote submitted", {
+        duelSessionId: duelId,
+        winner,
+        modelA: result.model_a,
+        modelB: result.model_b,
+        ratingUpdate: result.rating_update,
+      })
+    } else {
+      duelLog.warn("no duel session ID available, vote not submitted")
+    }
 
     setLastChosenSessionID(winningID)
     setControlSide(side)
@@ -550,11 +583,12 @@ export function Session() {
                     prompt = r
                     promptRef.set(r)
                   }}
-                  onSubmit={() => {
+                  onSubmit={(_sessionID, _promptInfo, duelSessionId) => {
                     const scrollFn = isSplit() ? scrollToBottomRight() : scrollToBottomLeft()
                     scrollFn?.()
                     if (isSplit()) {
-                      duelLog.info("prompt submitted in split mode, setting awaitingVote=true")
+                      duelLog.info("prompt submitted in split mode, setting awaitingVote=true", { duelSessionId })
+                      setCurrentDuelId(duelSessionId)
                       setAwaitingVote(true)
                     }
                   }}
