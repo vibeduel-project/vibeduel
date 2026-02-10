@@ -4,7 +4,7 @@ node_modules
 .sst
 .env
 .idea
-*.png
+**.png
 .vscode
 *~
 playground
