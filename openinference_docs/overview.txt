@@ -1,2 +1,3 @@
 this is openinference's fork of opencode. open inference is launching a "chatbot arena for coding". 
 this fork powered exclusively by the openinference proxy defined in "/home/mark/vllm_server_code_votes".
+user uses duel mode by setting model to "duel", or normal mode by setting model to anything else

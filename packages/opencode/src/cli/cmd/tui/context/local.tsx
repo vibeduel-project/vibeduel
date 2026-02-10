@@ -12,6 +12,9 @@ import { Provider } from "@/provider/provider"
 import { useArgs } from "./args"
 import { useSDK } from "./sdk"
 import { RGBA } from "@opentui/core"
+import { Log } from "@/util/log"
+
+const modelLog = Log.create({ service: "model-switch" })
 
 export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
   name: "Local",
@@ -226,6 +229,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           if (next >= recent.length) next = 0
           const val = recent[next]
           if (!val) return
+          modelLog.info("cycleRecent", { from: current, to: val })
           setModelStore("model", agent.current().name, { ...val })
         },
         cycleFavorite(direction: 1 | -1) {
@@ -252,6 +256,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           }
           const next = favorites[index]
           if (!next) return
+          modelLog.info("cycleFavorite", { from: current, to: next })
           setModelStore("model", agent.current().name, { ...next })
           const uniq = uniqueBy([next, ...modelStore.recent], (x) => `${x.providerID}/${x.modelID}`)
           if (uniq.length > 10) uniq.pop()
@@ -271,6 +276,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               })
               return
             }
+            modelLog.info("set", { from: currentModel(), to: model })
             setModelStore("model", agent.current().name, model)
             if (options?.recent) {
               const uniq = uniqueBy([model, ...modelStore.recent], (x) => `${x.providerID}/${x.modelID}`)

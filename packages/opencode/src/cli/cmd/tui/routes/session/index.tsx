@@ -395,6 +395,14 @@ export function Session() {
     void enterDuel()
   })
 
+  createEffect(() => {
+    const model = local.model.current()
+    if (!isSplit()) return
+    if (model?.modelID === "duel") return
+    duelLog.info("model switched away from duel, exiting split", { modelID: model?.modelID ?? "none" })
+    exitDuel()
+  })
+
   const exitDuel = () => {
     if (!route.rightSessionID) return
     // Use last voted session, or default to left side if no vote happened
@@ -406,6 +414,7 @@ export function Session() {
 
     // Clear all pairwise state immediately
     setAwaitingVote(false)
+    setPendingForkWinner(undefined)
     setLeftColor(undefined)
     setRightColor(undefined)
     setLastChosenSessionID(undefined)
@@ -579,7 +588,7 @@ export function Session() {
                 <Prompt
                   visible={true}
                   broadcastSessionIDs={route.rightSessionID ? [route.rightSessionID] : undefined}
-                  compareMode={isSplit()}
+                  compareMode={local.model.current()?.modelID === "duel"}
                   skipAutoSend={!!pendingForkWinner()}
                   disabled={promptDisabled()}
                   focused={!promptDisabled()}
