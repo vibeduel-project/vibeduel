@@ -17,6 +17,9 @@ import { useSDK } from "@tui/context/sdk"
 import { useLocal } from "../context/local"
 import { Identifier } from "@/id/id"
 import { generateDuelId } from "@/duel"
+import { Log } from "@/util/log"
+
+const duelLog = Log.create({ service: "duel" })
 
 // TODO: what is the best way to do this?
 let once = false
@@ -108,46 +111,51 @@ export function Home() {
               promptRef.set(r)
             }}
             hint={Hint}
-            compareMode={true}
+            compareMode={local.model.current()?.modelID === "duel"}
             onSubmit={async (sessionID, promptInfo, duelSessionId) => {
-              try {
-                const rightSession = await sdk.client.session.create({})
-                if (rightSession.data?.id) {
-                  const rightSessionID = rightSession.data.id
-                  const selectedModel = local.model.current()
-                  const nonTextParts = promptInfo.parts.filter((part) => part.type !== "text")
+              duelLog.info("home onSubmit", { sessionID, duelSessionId, isDuel: !!duelSessionId })
+              if (duelSessionId) {
+                try {
+                  const rightSession = await sdk.client.session.create({})
+                  if (rightSession.data?.id) {
+                    const rightSessionID = rightSession.data.id
+                    duelLog.info("home forking into split", { sessionID, rightSessionID, duelSessionId })
+                    const selectedModel = local.model.current()
+                    const nonTextParts = promptInfo.parts.filter((part) => part.type !== "text")
 
-                  sdk.client.session.prompt({
-                    sessionID: rightSessionID,
-                    messageID: Identifier.ascending("message"),
-                    agent: local.agent.current().name,
-                    model: selectedModel!,
-                    variant: local.model.variant.current(),
-                    parts: [
-                      {
-                        id: Identifier.ascending("part"),
-                        type: "text" as const,
-                        text: promptInfo.input,
-                      },
-                      ...nonTextParts.map((x) => ({
-                        id: Identifier.ascending("part"),
-                        ...x,
-                      })),
-                    ],
-                    duelSessionId,
-                  })
+                    sdk.client.session.prompt({
+                      sessionID: rightSessionID,
+                      messageID: Identifier.ascending("message"),
+                      agent: local.agent.current().name,
+                      model: selectedModel!,
+                      variant: local.model.variant.current(),
+                      parts: [
+                        {
+                          id: Identifier.ascending("part"),
+                          type: "text" as const,
+                          text: promptInfo.input,
+                        },
+                        ...nonTextParts.map((x) => ({
+                          id: Identifier.ascending("part"),
+                          ...x,
+                        })),
+                      ],
+                      duelSessionId,
+                    })
 
-                  navigate({
-                    type: "session",
-                    sessionID,
-                    rightSessionID,
-                    duelSessionId,
-                  })
-                  return
+                    navigate({
+                      type: "session",
+                      sessionID,
+                      rightSessionID,
+                      duelSessionId,
+                    })
+                    return
+                  }
+                } catch {
+                  // fall back to single-session view
                 }
-              } catch {
-                // fall back to single-session view
               }
+              duelLog.info("home navigating single-pane", { sessionID })
               navigate({
                 type: "session",
                 sessionID,

@@ -203,20 +203,6 @@ export function Session() {
   const [scrollToBottomLeft, setScrollToBottomLeft] = createSignal<(() => void) | undefined>(undefined)
   const [scrollToBottomRight, setScrollToBottomRight] = createSignal<(() => void) | undefined>(undefined)
 
-  useKeyboard((key) => {
-    if (key.ctrl && key.name === "r") {
-      const now = Date.now()
-      if (now - lastToggleAt() < 250) return
-      setLastToggleAt(now)
-      if (isSplit()) {
-        exitDuel()
-      } else {
-        void enterDuel()
-      }
-      return
-    }
-
-  })
 
   const promptSessionID = createMemo(() => route.sessionID)
   const messages = createMemo(() => sync.data.message[promptSessionID()] ?? [])
@@ -400,6 +386,11 @@ export function Session() {
   createEffect(() => {
     if (autoDuelDone()) return
     if (isSplit()) return
+    const model = local.model.current()
+    if (!model || model.modelID !== "duel") {
+      duelLog.info("auto-duel skipped", { modelID: model?.modelID ?? "none" })
+      return
+    }
     setAutoDuelDone(true)
     void enterDuel()
   })

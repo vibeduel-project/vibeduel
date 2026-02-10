@@ -1056,6 +1056,8 @@ export namespace Provider {
             body.model = "MiniMaxAI/MiniMax-M2"
             opts.body = JSON.stringify(body)
             log.info("Duel model fallback for non-duel request", { url })
+          } else {
+            log.info("Normal fetch (no duel rewrite)", { model: body.model, url })
           }
         }
 
