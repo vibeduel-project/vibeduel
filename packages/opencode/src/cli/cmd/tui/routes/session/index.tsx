@@ -483,12 +483,6 @@ export function Session() {
             </Show>
           </box>
           <box flexDirection="column" alignItems="flex-end">
-            <box flexDirection="row" gap={1} alignItems="center">
-              <text fg={isSplit() ? theme.success : theme.textMuted} wrapMode="none">
-                Reload {isSplit() ? "On" : "Off"}
-              </text>
-              <text fg={theme.textMuted} wrapMode="none">Ctrl+R</text>
-            </box>
             <box flexDirection="row" gap={2} alignItems="center">
               <text fg={theme.textMuted} wrapMode="none">
                 {tokenContext() ?? "—"} ({cost()})
