@@ -1227,7 +1227,7 @@ export namespace Provider {
 
     // For OpenInference, prefer "OpenAI gpt oss 20B" as default
     if (provider.id === "openinference") {
-      const defaultModelID = "OpenAI gpt oss 20B"
+      const defaultModelID = "duel"
       const defaultModel = provider.models[defaultModelID]
       if (defaultModel) {
         return {
