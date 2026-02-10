@@ -194,6 +194,8 @@ export function Session() {
   const [lastChosenSessionID, setLastChosenSessionID] = createSignal<string | undefined>(undefined)
   // Deferred fork: store which side won so the fork happens on next message submit, not immediately on vote
   const [pendingForkWinner, setPendingForkWinner] = createSignal<"left" | "right" | undefined>(undefined)
+  // Model reveal after voting: shows which model was on which side
+  const [modelReveal, setModelReveal] = createSignal<{ left: string; right: string } | undefined>(undefined)
   const [lastToggleAt, setLastToggleAt] = createSignal(0)
   const [autoDuelDone, setAutoDuelDone] = createSignal(false)
 
@@ -348,6 +350,12 @@ export function Session() {
         modelA: result.model_a,
         modelB: result.model_b,
         ratingUpdate: result.rating_update,
+      })
+      // left="a", right="b" — strip "openai/" prefix if present
+      const cleanName = (name: string) => name.replace(/^openai\//, "")
+      setModelReveal({
+        left: cleanName(result.model_a),
+        right: cleanName(result.model_b),
       })
     } else {
       duelLog.warn("no duel session ID available, vote not submitted")
@@ -553,6 +561,14 @@ export function Session() {
                     <text fg={theme.textMuted}>click to vote</text>
                   </box>
                 </Show>
+                <Show when={modelReveal() && !awaitingVote()}>
+                  <box flexDirection="row" justifyContent="center" gap={1} paddingBottom={1}>
+                    <text fg={theme.textMuted}>Left: </text>
+                    <text fg={theme.text}>{modelReveal()!.left}</text>
+                    <text fg={theme.textMuted}> | Right: </text>
+                    <text fg={theme.text}>{modelReveal()!.right}</text>
+                  </box>
+                </Show>
                 <Prompt
                   visible={true}
                   broadcastSessionIDs={route.rightSessionID ? [route.rightSessionID] : undefined}
@@ -628,6 +644,7 @@ export function Session() {
                     if (isSplit()) {
                       duelLog.info("prompt submitted in split mode, setting awaitingVote=true", { duelSessionId })
                       setCurrentDuelId(duelSessionId)
+                      setModelReveal(undefined)
                       setAwaitingVote(true)
                     }
                   }}
