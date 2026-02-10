@@ -314,14 +314,6 @@ export namespace SessionPrompt {
       }
 
       step++
-      if (step === 1)
-        ensureTitle({
-          session,
-          modelID: lastUser.model.modelID,
-          providerID: lastUser.model.providerID,
-          message: msgs.find((m) => m.info.role === "user")!,
-          history: msgs,
-        })
 
       const model = await Provider.getModel(lastUser.model.providerID, lastUser.model.modelID)
       const task = tasks.pop()

@@ -852,6 +852,10 @@ export namespace Provider {
 
         if (ids.length === 0) return
 
+        if (providerID === "openinference" && !ids.includes("duel")) {
+          ids.push("duel")
+        }
+
         provider.models = Object.fromEntries(
           ids.map((id) => [id, buildOpenAICompatibleModel(providerID, id, baseURL)]),
         )
@@ -1039,13 +1043,20 @@ export namespace Provider {
         // Duel mode: if x-duel-session-id header is present, rewrite body
         const headers = opts.headers as Record<string, string> | undefined
         const duelId = headers?.["x-duel-session-id"]
-        if (duelId && opts.body && typeof opts.body === "string" && url.includes("/chat/completions")) {
+        if (opts.body && typeof opts.body === "string" && url.includes("/chat/completions")) {
           const body = JSON.parse(opts.body)
-          const originalModel = body.model
-          body.model = "duel"
-          body.session_id = duelId
-          opts.body = JSON.stringify(body)
-          log.info("Duel fetch rewrite", { duelId, originalModel, url })
+          if (duelId) {
+            const originalModel = body.model
+            body.model = "duel"
+            body.session_id = duelId
+            opts.body = JSON.stringify(body)
+            log.info("Duel fetch rewrite", { duelId, originalModel, url })
+          } else if (body.model === "duel") {
+            // Non-duel request (title gen, summary, etc.) using the "duel" model name - swap to a real model
+            body.model = "MiniMaxAI/MiniMax-M2"
+            opts.body = JSON.stringify(body)
+            log.info("Duel model fallback for non-duel request", { url })
+          }
         }
 
         return fetchFn(input, {
