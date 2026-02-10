@@ -25,6 +25,8 @@ import type { FilePart } from "@opencode-ai/sdk/v2"
 import { TuiEvent } from "../../event"
 import { iife } from "@/util/iife"
 import { generateDuelId } from "@/duel"
+
+const duelLog = Log.create({ service: "duel" })
 import { Locale } from "@/util/locale"
 import { createColors, createFrames } from "../../ui/spinner.ts"
 import { useDialog } from "@tui/ui/dialog"
@@ -41,6 +43,8 @@ export type PromptProps = {
   broadcastSessionIDs?: string[]
   compareMode?: boolean
   syncMode?: 'left-to-right' | 'right-to-left'
+  // When true, Prompt does NOT send messages itself — onSubmit is responsible for sending.
+  skipAutoSend?: boolean
   onSubmit?: (sessionID: string, prompt: PromptInfo, duelSessionId?: string) => void
   ref?: (ref: PromptRef) => void
   hint?: JSX.Element
@@ -675,7 +679,10 @@ export function Prompt(props: PromptProps) {
         ],
       }
 
-      if (props.compareMode) {
+      if (props.skipAutoSend) {
+        duelLog.info("prompt: skipAutoSend=true, deferring send to onSubmit", { sessionID, duelId })
+      } else if (props.compareMode) {
+        duelLog.info("prompt: sending to primary session", { sessionID, duelId })
         sdk.client.session.prompt({
           sessionID,
           messageID,
@@ -690,9 +697,10 @@ export function Prompt(props: PromptProps) {
         })
       }
 
-      if (props.broadcastSessionIDs) {
+      if (props.broadcastSessionIDs && !props.skipAutoSend) {
         if (props.compareMode) {
           for (const targetID of props.broadcastSessionIDs) {
+            duelLog.info("prompt: broadcasting to session", { targetID, duelId })
             sdk.client.session.prompt({
               sessionID: targetID,
               messageID: Identifier.ascending("message"),
@@ -788,6 +796,12 @@ export function Prompt(props: PromptProps) {
 
     // Call onSubmit if provided
     if (props.onSubmit) {
+      duelLog.info("prompt: calling onSubmit (messages already sent above)", {
+        sessionID,
+        broadcastSessionIDs: props.broadcastSessionIDs,
+        duelId,
+        compareMode: props.compareMode,
+      })
       props.onSubmit(sessionID, promptInfo, duelId)
       input.clear()
       return

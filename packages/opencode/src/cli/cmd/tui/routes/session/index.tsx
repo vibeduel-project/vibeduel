@@ -136,6 +136,7 @@ export function Session() {
   const promptRef = usePromptRef()
   const toast = useToast()
   const sdk = useSDK()
+  const local = useLocal()
 
   const [sidebar, setSidebar] = createSignal<"show" | "hide" | "auto">(kv.get("sidebar", "hide"))
   const [conceal, setConceal] = createSignal(true)
@@ -191,6 +192,8 @@ export function Session() {
   // On subsequent rounds, captured from Prompt's onSubmit callback.
   const [currentDuelId, setCurrentDuelId] = createSignal<string | undefined>(route.duelSessionId)
   const [lastChosenSessionID, setLastChosenSessionID] = createSignal<string | undefined>(undefined)
+  // Deferred fork: store which side won so the fork happens on next message submit, not immediately on vote
+  const [pendingForkWinner, setPendingForkWinner] = createSignal<"left" | "right" | undefined>(undefined)
   const [lastToggleAt, setLastToggleAt] = createSignal(0)
   const [autoDuelDone, setAutoDuelDone] = createSignal(false)
 
@@ -352,32 +355,9 @@ export function Session() {
 
     setLastChosenSessionID(winningID)
     setControlSide(side)
+    // Store the winning side so the fork happens when the next message is sent
+    setPendingForkWinner(side)
     setAwaitingVote(false)
-
-    // Synchronize history: replace losing session with fork of winning session
-    try {
-      const fork = await sdk.client.session.fork({ sessionID: winningID })
-      if (!fork.data) return
-
-      // Replace the losing session with the forked winning session
-      if (side === "left") {
-        // Left wins, replace right with fork of left
-        navigate({
-          type: "session",
-          sessionID: route.sessionID,
-          rightSessionID: fork.data.id,
-        })
-      } else {
-        // Right wins, replace left with fork of right
-        navigate({
-          type: "session",
-          sessionID: fork.data.id,
-          rightSessionID: route.rightSessionID,
-        })
-      }
-    } catch (e) {
-      console.error("Failed to sync histories:", e)
-    }
   }
 
   const enterDuel = async () => {
@@ -577,13 +557,72 @@ export function Session() {
                   visible={true}
                   broadcastSessionIDs={route.rightSessionID ? [route.rightSessionID] : undefined}
                   compareMode={isSplit()}
+                  skipAutoSend={!!pendingForkWinner()}
                   disabled={promptDisabled()}
                   focused={!promptDisabled()}
                   ref={(r) => {
                     prompt = r
                     promptRef.set(r)
                   }}
-                  onSubmit={(_sessionID, _promptInfo, duelSessionId) => {
+                  onSubmit={async (_sessionID, _promptInfo, duelSessionId) => {
+                    const winner = pendingForkWinner()
+                    duelLog.info("onSubmit fired", {
+                      duelSessionId,
+                      pendingForkWinner: winner,
+                      skipAutoSend: !!winner,
+                      leftSessionID: route.sessionID,
+                      rightSessionID: route.rightSessionID,
+                    })
+
+                    // When skipAutoSend is true (pending fork), we handle everything:
+                    // 1. Fork the winner
+                    // 2. Send prompt to both the winner and the fork
+                    // 3. Navigate so the fork replaces the loser
+                    if (winner && route.rightSessionID) {
+                      const winningID = winner === "left" ? route.sessionID : route.rightSessionID
+                      duelLog.info("forking winner on next message", { winner, winningSessionID: winningID })
+                      const fork = await sdk.client.session.fork({ sessionID: winningID })
+                      if (fork.data) {
+                        const forkedID = fork.data.id
+                        duelLog.info("fork created", { forkedSessionID: forkedID, fromSessionID: winningID })
+
+                        const nonTextParts = _promptInfo.parts.filter((part) => part.type !== "text")
+                        const parts = [
+                          { id: Identifier.ascending("part"), type: "text" as const, text: _promptInfo.input },
+                          ...nonTextParts.map((x) => ({ id: Identifier.ascending("part"), ...x })),
+                        ]
+                        const promptPayload = {
+                          agent: local.agent.current().name,
+                          model: local.model.current()!,
+                          variant: local.model.variant.current(),
+                          parts,
+                          duelSessionId,
+                        }
+
+                        // Send prompt to both: the original winner and the fork
+                        duelLog.info("sending prompt to winner", { sessionID: winningID, duelSessionId })
+                        sdk.client.session.prompt({
+                          sessionID: winningID,
+                          messageID: Identifier.ascending("message"),
+                          ...promptPayload,
+                        })
+                        duelLog.info("sending prompt to fork", { sessionID: forkedID, duelSessionId })
+                        sdk.client.session.prompt({
+                          sessionID: forkedID,
+                          messageID: Identifier.ascending("message"),
+                          ...promptPayload,
+                        })
+
+                        // Navigate: the fork replaces the losing side
+                        if (winner === "left") {
+                          navigate({ type: "session", sessionID: route.sessionID, rightSessionID: forkedID })
+                        } else {
+                          navigate({ type: "session", sessionID: forkedID, rightSessionID: route.rightSessionID })
+                        }
+                      }
+                      setPendingForkWinner(undefined)
+                    }
+
                     const scrollFn = isSplit() ? scrollToBottomRight() : scrollToBottomLeft()
                     scrollFn?.()
                     if (isSplit()) {
@@ -611,6 +650,7 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
   const route = useRouteData("session")
   const { navigate } = useRoute()
 
+  duelLog.info("SessionPane mount", { side: props.side, sessionID: props.sessionID })
 
   const session = createMemo(() => sync.session.get(props.sessionID))
   const parentCtx = use()
@@ -673,6 +713,20 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
 
   const lastAssistant = createMemo(() => {
     return messages().findLast((x) => x.role === "assistant")
+  })
+
+  createEffect(() => {
+    const msgs = messages()
+    const last = lastAssistant()
+    const p = pending()
+    duelLog.info("pane state", {
+      side: props.side,
+      sessionID: props.sessionID,
+      messageCount: msgs.length,
+      lastAssistantID: last?.id,
+      lastAssistantCompleted: !!last?.time.completed,
+      pendingAssistantID: p,
+    })
   })
 
   const dimensions = useTerminalDimensions()
