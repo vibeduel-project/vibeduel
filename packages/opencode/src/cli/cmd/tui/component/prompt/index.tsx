@@ -688,6 +688,7 @@ export function Prompt(props: PromptProps) {
           messageID,
           ...payloadProto,
           duelSessionId: duelId,
+          duelSide: "left" as const,
         })
       } else {
         sdk.client.session.prompt({
@@ -706,6 +707,7 @@ export function Prompt(props: PromptProps) {
               messageID: Identifier.ascending("message"),
               ...payloadProto,
               duelSessionId: duelId,
+              duelSide: "right" as const,
             })
           }
         } else {

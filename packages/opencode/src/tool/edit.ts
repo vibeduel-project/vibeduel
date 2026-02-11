@@ -15,7 +15,10 @@ import { FileTime } from "../file/time"
 import { Filesystem } from "../util/filesystem"
 import { Instance } from "../project/instance"
 import { Snapshot } from "@/snapshot"
+import { getDuelWorktree } from "@/duel"
+import { Log } from "@/util/log"
 
+const log = Log.create({ service: "duel.edit" })
 const MAX_DIAGNOSTICS_PER_FILE = 20
 
 function normalizeLineEndings(text: string): string {
@@ -39,8 +42,21 @@ export const EditTool = Tool.define("edit", {
       throw new Error("oldString and newString must be different")
     }
 
-    const filePath = path.isAbsolute(params.filePath) ? params.filePath : path.join(Instance.directory, params.filePath)
-    if (!Filesystem.contains(Instance.directory, filePath)) {
+    let filePath = path.isAbsolute(params.filePath) ? params.filePath : path.join(Instance.directory, params.filePath)
+
+    const duelWorktree = getDuelWorktree(ctx.sessionID)
+    if (duelWorktree) {
+      if (filePath.startsWith(duelWorktree)) {
+        log.info("edit already targets worktree, skipping redirect", { sessionID: ctx.sessionID, filePath })
+      } else {
+        const originalPath = filePath
+        const relative = path.relative(Instance.directory, filePath)
+        filePath = path.join(duelWorktree, relative)
+        log.info("redirecting edit to worktree", { sessionID: ctx.sessionID, originalPath, worktreePath: filePath, relative })
+      }
+    }
+
+    if (!Filesystem.contains(Instance.directory, filePath) && !duelWorktree) {
       const parentDir = path.dirname(filePath)
       await ctx.ask({
         permission: "external_directory",
@@ -81,7 +97,11 @@ export const EditTool = Tool.define("edit", {
       const stats = await file.stat().catch(() => {})
       if (!stats) throw new Error(`File ${filePath} not found`)
       if (stats.isDirectory()) throw new Error(`Path is a directory, not a file: ${filePath}`)
-      await FileTime.assert(ctx.sessionID, filePath)
+      if (!duelWorktree) {
+        await FileTime.assert(ctx.sessionID, filePath)
+      } else {
+        log.info("skipping FileTime.assert for duel worktree", { sessionID: ctx.sessionID, filePath })
+      }
       contentOld = await file.text()
       contentNew = replace(contentOld, params.oldString, params.newString, params.replaceAll)
 

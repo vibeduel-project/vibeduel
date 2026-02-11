@@ -633,17 +633,21 @@ export function Session() {
                         }
 
                         // Send prompt to both: the original winner and the fork
-                        duelLog.info("sending prompt to winner", { sessionID: winningID, duelSessionId })
+                        const winnerSide = winner as "left" | "right"
+                        const forkSide = winner === "left" ? "right" as const : "left" as const
+                        duelLog.info("sending prompt to winner", { sessionID: winningID, duelSessionId, duelSide: winnerSide })
                         sdk.client.session.prompt({
                           sessionID: winningID,
                           messageID: Identifier.ascending("message"),
                           ...promptPayload,
+                          duelSide: winnerSide,
                         })
-                        duelLog.info("sending prompt to fork", { sessionID: forkedID, duelSessionId })
+                        duelLog.info("sending prompt to fork", { sessionID: forkedID, duelSessionId, duelSide: forkSide })
                         sdk.client.session.prompt({
                           sessionID: forkedID,
                           messageID: Identifier.ascending("message"),
                           ...promptPayload,
+                          duelSide: forkSide,
                         })
 
                         // Navigate: the fork replaces the losing side

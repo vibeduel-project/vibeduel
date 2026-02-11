@@ -119,7 +119,7 @@ export function Home() {
                   const rightSession = await sdk.client.session.create({})
                   if (rightSession.data?.id) {
                     const rightSessionID = rightSession.data.id
-                    duelLog.info("home forking into split", { sessionID, rightSessionID, duelSessionId })
+                    duelLog.info("home forking into split", { sessionID, rightSessionID, duelSessionId, leftDuelSide: "left", rightDuelSide: "right" })
                     const selectedModel = local.model.current()
                     const nonTextParts = promptInfo.parts.filter((part) => part.type !== "text")
 
@@ -141,6 +141,7 @@ export function Home() {
                         })),
                       ],
                       duelSessionId,
+                      duelSide: "right" as const,
                     })
 
                     navigate({

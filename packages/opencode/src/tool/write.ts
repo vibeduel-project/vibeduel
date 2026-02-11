@@ -10,7 +10,10 @@ import { FileTime } from "../file/time"
 import { Filesystem } from "../util/filesystem"
 import { Instance } from "../project/instance"
 import { trimDiff } from "./edit"
+import { getDuelWorktree } from "@/duel"
+import { Log } from "@/util/log"
 
+const log = Log.create({ service: "duel.write" })
 const MAX_DIAGNOSTICS_PER_FILE = 20
 const MAX_PROJECT_DIAGNOSTICS_FILES = 5
 
@@ -21,7 +24,7 @@ export const WriteTool = Tool.define("write", {
     filePath: z.string().describe("The absolute path to the file to write (must be absolute, not relative)"),
   }),
   async execute(params, ctx) {
-    const filepath = path.isAbsolute(params.filePath) ? params.filePath : path.join(Instance.directory, params.filePath)
+    let filepath = path.isAbsolute(params.filePath) ? params.filePath : path.join(Instance.directory, params.filePath)
     /* TODO
     if (!Filesystem.contains(Instance.directory, filepath)) {
       const parentDir = path.dirname(filepath)
@@ -29,10 +32,26 @@ export const WriteTool = Tool.define("write", {
     }
     */
 
+    const duelWorktree = getDuelWorktree(ctx.sessionID)
+    if (duelWorktree) {
+      if (filepath.startsWith(duelWorktree)) {
+        log.info("write already targets worktree, skipping redirect", { sessionID: ctx.sessionID, filepath })
+      } else {
+        const originalPath = filepath
+        const relative = path.relative(Instance.directory, filepath)
+        filepath = path.join(duelWorktree, relative)
+        log.info("redirecting write to worktree", { sessionID: ctx.sessionID, originalPath, worktreePath: filepath, relative })
+      }
+    }
+
     const file = Bun.file(filepath)
     const exists = await file.exists()
     const contentOld = exists ? await file.text() : ""
-    if (exists) await FileTime.assert(ctx.sessionID, filepath)
+    if (exists && !duelWorktree) {
+      await FileTime.assert(ctx.sessionID, filepath)
+    } else if (exists && duelWorktree) {
+      log.info("skipping FileTime.assert for duel worktree", { sessionID: ctx.sessionID, filepath })
+    }
 
     const diff = trimDiff(createTwoFilesPatch(filepath, filepath, contentOld, params.content))
     await ctx.ask({

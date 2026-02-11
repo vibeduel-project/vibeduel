@@ -1235,6 +1235,7 @@ export class Session extends HeyApiClient {
       system?: string
       variant?: string
       duelSessionId?: string
+      duelSide?: "left" | "right"
       parts?: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
     },
     options?: Options<never, ThrowOnError>,
@@ -1254,6 +1255,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "system" },
             { in: "body", key: "variant" },
             { in: "body", key: "duelSessionId" },
+            { in: "body", key: "duelSide" },
             { in: "body", key: "parts" },
           ],
         },
@@ -1325,6 +1327,7 @@ export class Session extends HeyApiClient {
       system?: string
       variant?: string
       duelSessionId?: string
+      duelSide?: "left" | "right"
       parts?: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
     },
     options?: Options<never, ThrowOnError>,
@@ -1344,6 +1347,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "system" },
             { in: "body", key: "variant" },
             { in: "body", key: "duelSessionId" },
+            { in: "body", key: "duelSide" },
             { in: "body", key: "parts" },
           ],
         },

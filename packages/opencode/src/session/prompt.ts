@@ -44,7 +44,7 @@ import { SessionStatus } from "./status"
 import { LLM } from "./llm"
 import { iife } from "@/util/iife"
 import { Shell } from "@/shell/shell"
-import { setDuel, clearDuel } from "@/duel"
+import { setDuel, clearDuel, setDuelWorktree, clearDuelWorktree, createDuelWorktrees } from "@/duel"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -102,6 +102,7 @@ export namespace SessionPrompt {
     system: z.string().optional(),
     variant: z.string().optional(),
     duelSessionId: z.string().optional(),
+    duelSide: z.enum(["left", "right"]).optional(),
     parts: z.array(
       z.discriminatedUnion("type", [
         MessageV2.TextPart.omit({
@@ -180,6 +181,13 @@ export namespace SessionPrompt {
     if (input.duelSessionId) {
       log.info("duel mode active", { sessionID: input.sessionID, duelSessionId: input.duelSessionId })
       setDuel(input.sessionID, input.duelSessionId)
+
+      if (input.duelSide) {
+        const worktrees = await createDuelWorktrees(input.duelSessionId, Instance.directory)
+        const worktreePath = worktrees[input.duelSide]
+        setDuelWorktree(input.sessionID, worktreePath)
+        log.info("duel worktree assigned", { sessionID: input.sessionID, side: input.duelSide, worktreePath })
+      }
     }
 
     try {
@@ -187,6 +195,7 @@ export namespace SessionPrompt {
     } finally {
       if (input.duelSessionId) {
         clearDuel(input.sessionID)
+        clearDuelWorktree(input.sessionID)
       }
     }
   })
