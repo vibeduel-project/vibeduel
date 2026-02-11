@@ -207,15 +207,6 @@ export function PermissionPrompt(props: {
             setStore("always", false)
             if (option === "cancel") return
 
-            // Auto-reject other side
-            if (props.otherSessionID) {
-              const listing = sync.data.permission[props.otherSessionID] || []
-              for (const p of listing) {
-                logToSide(props.side, `Auto-rejecting permission on other side (${props.otherSessionID}): ${p.id}`)
-                sdk.client.permission.reply({ reply: "reject", requestID: p.id })
-              }
-            }
-
             if (props.onPermissionHandled && props.request.tool) {
               props.onPermissionHandled({
                 toolCallID: props.request.tool.callID,
@@ -294,15 +285,6 @@ export function PermissionPrompt(props: {
               return
             }
 
-            // Auto-reject other side
-            if (props.otherSessionID && (option === "once" || option === "reject")) {
-              const listing = sync.data.permission[props.otherSessionID] || []
-              for (const p of listing) {
-                logToSide(props.side, `Auto-rejecting permission on other side (${props.otherSessionID}): ${p.id}`)
-                sdk.client.permission.reply({ reply: "reject", requestID: p.id })
-              }
-            }
-
             if (props.onPermissionHandled && props.request.tool && option === "once") {
               props.onPermissionHandled({
                 toolCallID: props.request.tool.callID,
@@ -364,7 +346,7 @@ function Prompt<const T extends Record<string, string>>(props: {
                 paddingRight={1}
                 backgroundColor={theme.backgroundMenu}
                 onMouseUp={() => {
-                  if (!props.active) return
+                  duelLog.info(`Permission button clicked`, { option: String(option), active: props.active })
                   props.onSelect(option)
                 }}
               >
