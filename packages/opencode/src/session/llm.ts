@@ -171,7 +171,7 @@ export namespace LLM {
             }
           : undefined),
         ...input.model.headers,
-        ...(input.duelSessionId ? { "x-duel-session-id": input.duelSessionId } : undefined),
+        ...(input.duelSessionId ? { "x-duel-session-id": input.duelSessionId, "x-opencode-session": input.sessionID } : undefined),
       },
       maxRetries: input.retries ?? 0,
       messages: [

@@ -119,6 +119,7 @@ export function PermissionPrompt(props: {
 
   createEffect(() => {
     if (autoReplied.done) return
+    if (props.request.permission === "edit") return
     setAutoReplied("done", true)
     logToSide(props.side, `Auto-allowing permission: ${props.request.permission} (${props.request.id})`)
     if (props.onPermissionHandled && props.request.tool) {
