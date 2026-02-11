@@ -1477,6 +1477,7 @@ export namespace SessionPrompt {
     if (!isFirst) return
     const agent = await Agent.get("title")
     if (!agent) return
+    log.info("BACKGROUND REQUEST: title generation", { sessionID: input.session.id, providerID: input.providerID, modelID: input.modelID })
     const result = await LLM.stream({
       agent,
       user: input.message.info as MessageV2.User,

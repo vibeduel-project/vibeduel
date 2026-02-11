@@ -1053,9 +1053,21 @@ export namespace Provider {
             log.info("Duel fetch rewrite", { duelId, originalModel, url })
           } else if (body.model === "duel") {
             // Non-duel request (title gen, summary, etc.) using the "duel" model name - swap to a real model
+            const msgs = body.messages || []
+            const lastMsg = msgs[msgs.length - 1]
+            const lastContent = typeof lastMsg?.content === "string" ? lastMsg.content.slice(0, 200) : JSON.stringify(lastMsg?.content)?.slice(0, 200)
+            log.info("Duel model fallback for non-duel request", {
+              url,
+              msgCount: msgs.length,
+              lastRole: lastMsg?.role,
+              lastContent,
+              maxTokens: body.max_tokens,
+              stream: body.stream,
+              sessionHeader: headers?.["x-opencode-session"],
+              allHeaderKeys: headers ? Object.keys(headers) : [],
+            })
             body.model = "MiniMaxAI/MiniMax-M2"
             opts.body = JSON.stringify(body)
-            log.info("Duel model fallback for non-duel request", { url })
           } else {
             log.info("Normal fetch (no duel rewrite)", { model: body.model, url })
           }

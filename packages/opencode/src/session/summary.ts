@@ -88,40 +88,44 @@ export namespace SessionSummary {
           m.info.role === "assistant" && m.parts.some((p) => p.type === "step-finish" && p.reason !== "tool-calls"),
       )
     ) {
-      if (diffs.length > 0) {
-        for (const msg of messages) {
-          for (const part of msg.parts) {
-            if (part.type === "tool" && part.state.status === "completed") {
-              part.state.output = "[TOOL OUTPUT PRUNED]"
-            }
-          }
-        }
-        const summaryAgent = await Agent.get("summary")
-        const stream = await LLM.stream({
-          agent: summaryAgent,
-          user: userMsg,
-          tools: {},
-          model: summaryAgent.model
-            ? await Provider.getModel(summaryAgent.model.providerID, summaryAgent.model.modelID)
-            : small,
-          small: true,
-          messages: [
-            ...MessageV2.toModelMessage(messages),
-            {
-              role: "user" as const,
-              content: `Summarize the above conversation according to your system prompts.`,
-            },
-          ],
-          abort: new AbortController().signal,
-          sessionID: userMsg.sessionID,
-          system: [],
-          retries: 3,
-        })
-        const result = await stream.text
-        if (result) {
-          userMsg.summary.body = result
-        }
-      }
+      // LLM summary generation disabled -- summary.body is not displayed anywhere in the UI.
+      // To re-enable: uncomment the block below. It calls the "summary" agent to generate
+      // a text summary stored in userMsg.summary.body.
+      //
+      // if (diffs.length > 0) {
+      //   for (const msg of messages) {
+      //     for (const part of msg.parts) {
+      //       if (part.type === "tool" && part.state.status === "completed") {
+      //         part.state.output = "[TOOL OUTPUT PRUNED]"
+      //       }
+      //     }
+      //   }
+      //   const summaryAgent = await Agent.get("summary")
+      //   const stream = await LLM.stream({
+      //     agent: summaryAgent,
+      //     user: userMsg,
+      //     tools: {},
+      //     model: summaryAgent.model
+      //       ? await Provider.getModel(summaryAgent.model.providerID, summaryAgent.model.modelID)
+      //       : small,
+      //     small: true,
+      //     messages: [
+      //       ...MessageV2.toModelMessage(messages),
+      //       {
+      //         role: "user" as const,
+      //         content: `Summarize the above conversation according to your system prompts.`,
+      //       },
+      //     ],
+      //     abort: new AbortController().signal,
+      //     sessionID: userMsg.sessionID,
+      //     system: [],
+      //     retries: 3,
+      //   })
+      //   const result = await stream.text
+      //   if (result) {
+      //     userMsg.summary.body = result
+      //   }
+      // }
       await Session.updateMessage(userMsg)
     }
   }
