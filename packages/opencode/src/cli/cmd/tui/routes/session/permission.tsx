@@ -1,6 +1,6 @@
 import { createStore } from "solid-js/store"
 import { createMemo, createEffect, onCleanup, For, Match, Show, Switch } from "solid-js"
-import { useKeyboard, useTerminalDimensions, type JSX } from "@opentui/solid"
+import { useTerminalDimensions, type JSX } from "@opentui/solid"
 import { useTheme } from "../../context/theme"
 import type { PermissionRequest } from "@opencode-ai/sdk/v2"
 import { useSDK } from "../../context/sdk"
@@ -331,32 +331,6 @@ function Prompt<const T extends Record<string, string>>(props: {
 }) {
   const { theme } = useTheme()
   const keys = Object.keys(props.options) as (keyof T)[]
-  const [store, setStore] = createStore({
-    selected: keys[0],
-  })
-
-  useKeyboard((evt) => {
-    if (!props.active) return
-
-    if (evt.name === "left" || evt.name == "h") {
-      evt.preventDefault()
-      const idx = keys.indexOf(store.selected)
-      const next = keys[(idx - 1 + keys.length) % keys.length]
-      setStore("selected", next)
-    }
-
-    if (evt.name === "right" || evt.name == "l") {
-      evt.preventDefault()
-      const idx = keys.indexOf(store.selected)
-      const next = keys[(idx + 1) % keys.length]
-      setStore("selected", next)
-    }
-
-    if (evt.name === "return") {
-      evt.preventDefault()
-      props.onSelect(store.selected)
-    }
-  })
 
   return (
     <box
@@ -381,7 +355,6 @@ function Prompt<const T extends Record<string, string>>(props: {
         paddingRight={3}
         paddingBottom={1}
         backgroundColor={theme.backgroundElement}
-        justifyContent="space-between"
       >
         <box flexDirection="row" gap={1}>
           <For each={keys}>
@@ -389,22 +362,18 @@ function Prompt<const T extends Record<string, string>>(props: {
               <box
                 paddingLeft={1}
                 paddingRight={1}
-                backgroundColor={option === store.selected ? theme.warning : theme.backgroundMenu}
+                backgroundColor={theme.backgroundMenu}
+                onMouseUp={() => {
+                  if (!props.active) return
+                  props.onSelect(option)
+                }}
               >
-                <text fg={option === store.selected ? theme.selectedListItemText : theme.textMuted}>
+                <text fg={theme.textMuted}>
                   {props.options[option]}
                 </text>
               </box>
             )}
           </For>
-        </box>
-        <box flexDirection="row" gap={2}>
-          <text fg={theme.text}>
-            {"⇆"} <span style={{ fg: theme.textMuted }}>select</span>
-          </text>
-          <text fg={theme.text}>
-            enter <span style={{ fg: theme.textMuted }}>confirm</span>
-          </text>
         </box>
       </box>
     </box>

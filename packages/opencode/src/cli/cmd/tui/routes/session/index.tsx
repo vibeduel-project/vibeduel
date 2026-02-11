@@ -1536,37 +1536,6 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
 
         // Remove from tracking
         setTrackedActions(prev => prev.filter(a => a.toolCallID !== action.toolCallID))
-
-        // Trigger Sync if completed
-        if (status === "completed" && props.otherSessionID) {
-          sdk.client.session.fork({ sessionID: props.sessionID }).then((fork) => {
-            if (!fork.data) return
-            const newID = fork.data.id
-            if (props.side === "left") {
-              navigate({
-                type: "session",
-                sessionID: props.sessionID,
-                rightSessionID: newID,
-              })
-            } else {
-              navigate({
-                type: "session",
-                sessionID: newID,
-                rightSessionID: props.sessionID,
-              })
-            }
-
-            // Trigger generation on the new session
-            sdk.client.session.prompt({
-              sessionID: newID,
-              messageID: Identifier.ascending("message"),
-              parts: [],
-              // We want to trigger the agent to continue based on the last history (tool output)
-              // Sending an empty prompt usually acts as a "go" signal if the turn structure allows. 
-            }).catch(console.error)
-
-          }).catch(console.error)
-        }
       }
     })
   })
