@@ -9,6 +9,7 @@ import { Language } from "web-tree-sitter"
 
 import { $ } from "bun"
 import { Filesystem } from "@/util/filesystem"
+import { getDuelWorktree } from "@/duel"
 import { fileURLToPath } from "url"
 import { Flag } from "@/flag/flag.ts"
 import { Shell } from "@/shell/shell"
@@ -71,7 +72,8 @@ export const BashTool = Tool.define("bash", async () => {
         ),
     }),
     async execute(params, ctx) {
-      const cwd = params.workdir || Instance.directory
+      const duelWorktree = getDuelWorktree(ctx.sessionID)
+      const cwd = duelWorktree || params.workdir || Instance.directory
       if (params.timeout !== undefined && params.timeout < 0) {
         throw new Error(`Invalid timeout value: ${params.timeout}. Timeout must be a positive number.`)
       }
@@ -81,7 +83,7 @@ export const BashTool = Tool.define("bash", async () => {
         throw new Error("Failed to parse command")
       }
       const directories = new Set<string>()
-      if (!Filesystem.contains(Instance.directory, cwd)) directories.add(cwd)
+      if (!duelWorktree && !Filesystem.contains(Instance.directory, cwd)) directories.add(cwd)
       const patterns = new Set<string>()
       const always = new Set<string>()
 

@@ -4,6 +4,7 @@ import { Tool } from "./tool"
 import DESCRIPTION from "./glob.txt"
 import { Ripgrep } from "../file/ripgrep"
 import { Instance } from "../project/instance"
+import { getDuelWorktree } from "@/duel"
 
 export const GlobTool = Tool.define("glob", {
   description: DESCRIPTION,
@@ -27,8 +28,10 @@ export const GlobTool = Tool.define("glob", {
       },
     })
 
-    let search = params.path ?? Instance.directory
-    search = path.isAbsolute(search) ? search : path.resolve(Instance.directory, search)
+    const duelWorktree = getDuelWorktree(ctx.sessionID)
+    const baseDir = duelWorktree || Instance.directory
+    let search = params.path ?? baseDir
+    search = path.isAbsolute(search) ? search : path.resolve(baseDir, search)
 
     const limit = 100
     const files = []
@@ -64,7 +67,7 @@ export const GlobTool = Tool.define("glob", {
     }
 
     return {
-      title: path.relative(Instance.worktree, search),
+      title: path.relative(duelWorktree || Instance.worktree, search),
       metadata: {
         count: files.length,
         truncated,

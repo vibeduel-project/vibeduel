@@ -44,7 +44,7 @@ import { SessionStatus } from "./status"
 import { LLM } from "./llm"
 import { iife } from "@/util/iife"
 import { Shell } from "@/shell/shell"
-import { setDuel, clearDuel, setDuelWorktree, clearDuelWorktree, createDuelWorktrees } from "@/duel"
+import { setDuel, clearDuel, setDuelWorktree, clearDuelWorktree, createDuelWorktrees, getDuelWorktree } from "@/duel"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -678,6 +678,19 @@ export namespace SessionPrompt {
         inputSchema: jsonSchema(schema as any),
         async execute(args, options) {
           const ctx = context(args, options)
+          const worktree = getDuelWorktree(ctx.sessionID)
+          const projectDir = Instance.directory
+
+          // In duel mode: rewrite original dir → worktree in tool inputs
+          if (worktree) {
+            const argsStr = JSON.stringify(args)
+            if (argsStr.includes(projectDir)) {
+              const rewritten = argsStr.replaceAll(projectDir, worktree)
+              args = JSON.parse(rewritten)
+              log.info("duel: rewrote tool input", { tool: item.id, sessionID: ctx.sessionID, from: projectDir, to: worktree })
+            }
+          }
+
           await Plugin.trigger(
             "tool.execute.before",
             {
@@ -699,6 +712,24 @@ export namespace SessionPrompt {
             },
             result,
           )
+
+          // In duel mode: rewrite worktree → original dir in tool outputs
+          if (worktree) {
+            if (result.title?.includes(worktree)) {
+              log.info("duel: rewrote tool output title", { tool: item.id, sessionID: ctx.sessionID, from: worktree, to: projectDir, before: result.title })
+              result.title = result.title.replaceAll(worktree, projectDir)
+            }
+            if (result.output?.includes(worktree)) {
+              log.info("duel: rewrote tool output", { tool: item.id, sessionID: ctx.sessionID, from: worktree, to: projectDir })
+              result.output = result.output.replaceAll(worktree, projectDir)
+            }
+            const metaStr = JSON.stringify(result.metadata ?? {})
+            if (metaStr.includes(worktree)) {
+              result.metadata = JSON.parse(metaStr.replaceAll(worktree, projectDir))
+              log.info("duel: rewrote tool output metadata", { tool: item.id, sessionID: ctx.sessionID, from: worktree, to: projectDir })
+            }
+          }
+
           return result
         },
         toModelOutput(result) {

@@ -7,6 +7,7 @@ import { FileTime } from "../file/time"
 import DESCRIPTION from "./read.txt"
 import { Filesystem } from "../util/filesystem"
 import { Instance } from "../project/instance"
+import { getDuelWorktree } from "@/duel"
 import { Identifier } from "../id/id"
 import { iife } from "@/util/iife"
 
@@ -25,9 +26,9 @@ export const ReadTool = Tool.define("read", {
     if (!path.isAbsolute(filepath)) {
       filepath = path.join(process.cwd(), filepath)
     }
-    const title = path.relative(Instance.worktree, filepath)
-
-    if (!ctx.extra?.["bypassCwdCheck"] && !Filesystem.contains(Instance.directory, filepath)) {
+    const duelWorktree = getDuelWorktree(ctx.sessionID)
+    const title = path.relative(duelWorktree || Instance.worktree, filepath)
+    if (!duelWorktree && !ctx.extra?.["bypassCwdCheck"] && !Filesystem.contains(Instance.directory, filepath)) {
       const parentDir = path.dirname(filepath)
       await ctx.ask({
         permission: "external_directory",

@@ -1,0 +1,14 @@
+  prompt.ts — Generic input/output string replacement for all tools:                                                                                                      
+  - Before execute: replaces Instance.directory → worktree path in all string args
+  - After execute: replaces worktree path → Instance.directory in title, output, and metadata                                                                             
+  - Every replacement is logged                                                                                                                                           
+
+  bash.ts — Default cwd uses worktree when in duel mode; skip external_directory check for worktree
+
+  glob.ts — Default search path uses worktree when in duel mode
+
+  grep.ts — Default search path uses worktree when in duel mode
+
+  ls.ts — Default search path uses worktree when in duel mode
+
+  read.ts — Skip external_directory permission check when in duel mode (path is in /tmp/)

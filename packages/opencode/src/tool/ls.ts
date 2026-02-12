@@ -4,6 +4,7 @@ import * as path from "path"
 import DESCRIPTION from "./ls.txt"
 import { Instance } from "../project/instance"
 import { Ripgrep } from "../file/ripgrep"
+import { getDuelWorktree } from "@/duel"
 
 export const IGNORE_PATTERNS = [
   "node_modules/",
@@ -41,7 +42,9 @@ export const ListTool = Tool.define("list", {
     ignore: z.array(z.string()).describe("List of glob patterns to ignore").optional(),
   }),
   async execute(params, ctx) {
-    const searchPath = path.resolve(Instance.directory, params.path || ".")
+    const duelWorktree = getDuelWorktree(ctx.sessionID)
+    const baseDir = duelWorktree || Instance.directory
+    const searchPath = path.resolve(baseDir, params.path || ".")
 
     await ctx.ask({
       permission: "list",
@@ -108,7 +111,7 @@ export const ListTool = Tool.define("list", {
     const output = `${searchPath}/\n` + renderDir(".", 0)
 
     return {
-      title: path.relative(Instance.worktree, searchPath),
+      title: path.relative(duelWorktree || Instance.worktree, searchPath),
       metadata: {
         count: files.length,
         truncated: files.length >= LIMIT,

@@ -91,7 +91,7 @@ export const WriteTool = Tool.define("write", {
     }
 
     return {
-      title: path.relative(Instance.directory, displayPath),
+      title: path.relative(duelWorktree || Instance.directory, displayPath),
       metadata: {
         diagnostics,
         filepath: displayPath,

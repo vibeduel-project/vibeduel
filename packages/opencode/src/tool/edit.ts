@@ -168,7 +168,7 @@ export const EditTool = Tool.define("edit", {
         diff,
         filediff,
       },
-      title: `${path.relative(Instance.directory, displayPath)}`,
+      title: `${path.relative(duelWorktree || Instance.directory, displayPath)}`,
       output,
     }
   },

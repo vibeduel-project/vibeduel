@@ -4,6 +4,7 @@ import { Ripgrep } from "../file/ripgrep"
 
 import DESCRIPTION from "./grep.txt"
 import { Instance } from "../project/instance"
+import { getDuelWorktree } from "@/duel"
 
 const MAX_LINE_LENGTH = 2000
 
@@ -30,7 +31,8 @@ export const GrepTool = Tool.define("grep", {
       },
     })
 
-    const searchPath = params.path || Instance.directory
+    const duelWorktree = getDuelWorktree(ctx.sessionID)
+    const searchPath = params.path || duelWorktree || Instance.directory
 
     const rgPath = await Ripgrep.filepath()
     const args = ["-nH", "--field-match-separator=|", "--regexp", params.pattern]
