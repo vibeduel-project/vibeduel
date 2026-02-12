@@ -34,6 +34,30 @@ export namespace Config {
   }
 
   export const state = Instance.state(async () => {
+    // Auto-generate default config if none exists in working directory
+    const localConfigDir = path.join(Instance.directory, ".opencode")
+    const localConfigPath = path.join(localConfigDir, "opencode.jsonc")
+    if (!(await Bun.file(localConfigPath).exists())) {
+      await fs.mkdir(localConfigDir, { recursive: true })
+      const defaultConfig = `{
+    "$schema": "https://opencode.ai/config.json",
+    "provider": {
+      "opencode": {
+        "options": {},
+      },
+    },
+    "permission": {
+      "edit": "ask",
+      "bash": "ask"
+    },
+    "tools": {
+      "github-triage": false,
+    },
+  }`
+      await Bun.write(localConfigPath, defaultConfig)
+      log.info("auto-generated default config", { path: localConfigPath })
+    }
+
     const auth = await Auth.all()
     let result = await global()
 

@@ -1,0 +1,15 @@
+{
+    "$schema": "https://opencode.ai/config.json",
+    "provider": {
+      "opencode": {
+        "options": {},
+      },
+    },
+    "permission": {
+      "edit": "ask",
+      "bash": "ask"
+    },
+    "tools": {
+      "github-triage": false,
+    },
+  }

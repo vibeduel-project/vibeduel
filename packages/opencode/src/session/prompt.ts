@@ -661,6 +661,11 @@ export namespace SessionPrompt {
         }
       },
       async ask(req) {
+        // In duel mode, auto-approve everything — edits go to isolated worktrees
+        if (getDuelWorktree(input.session.id)) {
+          log.info("duel: auto-approved permission", { sessionID: input.session.id, permission: req.permission })
+          return
+        }
         await PermissionNext.ask({
           ...req,
           sessionID: input.session.id,

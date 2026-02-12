@@ -12,6 +12,9 @@ import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 import { PermissionNext } from "@/permission/next"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
+import { Log } from "@/util/log"
+
+const log = Log.create({ service: "agent" })
 
 export namespace Agent {
   export const Info = z
@@ -48,7 +51,14 @@ export namespace Agent {
       doom_loop: "ask",
       external_directory: "ask",
     })
-    const user = PermissionNext.fromConfig(cfg.permission ?? {})
+    const userPermConfig = cfg.permission ?? {}
+    const user = PermissionNext.fromConfig(userPermConfig)
+    log.info("agent permission setup", {
+      configPermission: JSON.stringify(userPermConfig),
+      defaultRules: JSON.stringify(defaults),
+      userRules: JSON.stringify(user),
+      merged: JSON.stringify(PermissionNext.merge(defaults, user)),
+    })
 
     const result: Record<string, Info> = {
       build: {
