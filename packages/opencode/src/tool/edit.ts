@@ -43,16 +43,16 @@ export const EditTool = Tool.define("edit", {
     }
 
     let filePath = path.isAbsolute(params.filePath) ? params.filePath : path.join(Instance.directory, params.filePath)
+    const displayPath = filePath
 
     const duelWorktree = getDuelWorktree(ctx.sessionID)
     if (duelWorktree) {
       if (filePath.startsWith(duelWorktree)) {
         log.info("edit already targets worktree, skipping redirect", { sessionID: ctx.sessionID, filePath })
       } else {
-        const originalPath = filePath
         const relative = path.relative(Instance.directory, filePath)
         filePath = path.join(duelWorktree, relative)
-        log.info("redirecting edit to worktree", { sessionID: ctx.sessionID, originalPath, worktreePath: filePath, relative })
+        log.info("redirecting edit to worktree", { sessionID: ctx.sessionID, displayPath, worktreePath: filePath, relative })
       }
     }
 
@@ -78,10 +78,10 @@ export const EditTool = Tool.define("edit", {
         diff = trimDiff(createTwoFilesPatch(filePath, filePath, contentOld, contentNew))
         await ctx.ask({
           permission: "edit",
-          patterns: [path.relative(Instance.worktree, filePath)],
+          patterns: [path.relative(Instance.directory, displayPath)],
           always: ["*"],
           metadata: {
-            filepath: filePath,
+            filepath: displayPath,
             diff,
           },
         })
@@ -95,8 +95,8 @@ export const EditTool = Tool.define("edit", {
 
       const file = Bun.file(filePath)
       const stats = await file.stat().catch(() => {})
-      if (!stats) throw new Error(`File ${filePath} not found`)
-      if (stats.isDirectory()) throw new Error(`Path is a directory, not a file: ${filePath}`)
+      if (!stats) throw new Error(`File ${displayPath} not found`)
+      if (stats.isDirectory()) throw new Error(`Path is a directory, not a file: ${displayPath}`)
       if (!duelWorktree) {
         await FileTime.assert(ctx.sessionID, filePath)
       } else {
@@ -110,10 +110,10 @@ export const EditTool = Tool.define("edit", {
       )
       await ctx.ask({
         permission: "edit",
-        patterns: [path.relative(Instance.worktree, filePath)],
+        patterns: [path.relative(Instance.directory, displayPath)],
         always: ["*"],
         metadata: {
-          filepath: filePath,
+          filepath: displayPath,
           diff,
         },
       })
@@ -130,7 +130,7 @@ export const EditTool = Tool.define("edit", {
     })
 
     const filediff: Snapshot.FileDiff = {
-      file: filePath,
+      file: displayPath,
       before: contentOld,
       after: contentNew,
       additions: 0,
@@ -168,7 +168,7 @@ export const EditTool = Tool.define("edit", {
         diff,
         filediff,
       },
-      title: `${path.relative(Instance.worktree, filePath)}`,
+      title: `${path.relative(Instance.directory, displayPath)}`,
       output,
     }
   },

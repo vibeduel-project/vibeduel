@@ -126,6 +126,18 @@ export namespace LLM {
 
     const tools = await resolveTools(input)
 
+    const DUEL_PATH_LEAK = "/tmp/opencode-duel"
+    for (const msg of input.messages) {
+      const content = JSON.stringify(msg)
+      if (content.includes(DUEL_PATH_LEAK)) {
+        l.warn("DUEL PATH LEAK in message history", {
+          sessionID: input.sessionID,
+          role: msg.role,
+          preview: content.slice(0, 500),
+        })
+      }
+    }
+
     return streamText({
       onError(error) {
         l.error("stream error", {

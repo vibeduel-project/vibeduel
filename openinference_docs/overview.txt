@@ -3,6 +3,9 @@ this fork powered exclusively by the openinference proxy defined in "/home/mark/
 user uses duel mode by setting model to "duel", or normal mode by setting model to anything else
 currently, the app is effectively ready for launch - the only thing remaining is making edit permissionprompts non-blocking
 
+duel mode worktrees:
+in duel mode, edits from each side now go to isolated git worktrees (/tmp/opencode-duel-<id>/left and /tmp/opencode-duel-<id>/right) instead of the real codebase. this is wired through duel.ts, prompt.ts, the SDK, and the write/edit tools. working on now: make the worktree paths invisible to the model and user (tool titles, permission patterns, and message history currently leak /tmp/opencode-duel paths).
+
 frontend logs:
 /home/mark/.local/share/opencode/log/dev-tui.log
 /home/mark/.local/share/opencode/log/dev.log

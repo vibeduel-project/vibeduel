@@ -25,6 +25,7 @@ export const WriteTool = Tool.define("write", {
   }),
   async execute(params, ctx) {
     let filepath = path.isAbsolute(params.filePath) ? params.filePath : path.join(Instance.directory, params.filePath)
+    const displayPath = filepath
     /* TODO
     if (!Filesystem.contains(Instance.directory, filepath)) {
       const parentDir = path.dirname(filepath)
@@ -37,10 +38,9 @@ export const WriteTool = Tool.define("write", {
       if (filepath.startsWith(duelWorktree)) {
         log.info("write already targets worktree, skipping redirect", { sessionID: ctx.sessionID, filepath })
       } else {
-        const originalPath = filepath
         const relative = path.relative(Instance.directory, filepath)
         filepath = path.join(duelWorktree, relative)
-        log.info("redirecting write to worktree", { sessionID: ctx.sessionID, originalPath, worktreePath: filepath, relative })
+        log.info("redirecting write to worktree", { sessionID: ctx.sessionID, displayPath, worktreePath: filepath, relative })
       }
     }
 
@@ -56,10 +56,10 @@ export const WriteTool = Tool.define("write", {
     const diff = trimDiff(createTwoFilesPatch(filepath, filepath, contentOld, params.content))
     await ctx.ask({
       permission: "edit",
-      patterns: [path.relative(Instance.worktree, filepath)],
+      patterns: [path.relative(Instance.directory, displayPath)],
       always: ["*"],
       metadata: {
-        filepath,
+        filepath: displayPath,
         diff,
       },
     })
@@ -91,10 +91,10 @@ export const WriteTool = Tool.define("write", {
     }
 
     return {
-      title: path.relative(Instance.worktree, filepath),
+      title: path.relative(Instance.directory, displayPath),
       metadata: {
         diagnostics,
-        filepath,
+        filepath: displayPath,
         exists: exists,
       },
       output,
