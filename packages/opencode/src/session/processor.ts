@@ -208,6 +208,12 @@ export namespace SessionProcessor {
                 case "tool-error": {
                   const match = toolcalls[value.toolCallId]
                   if (match && match.state.status === "running") {
+                    log.info("tool-error", {
+                      sessionID: input.sessionID,
+                      tool: match.tool,
+                      callID: value.toolCallId,
+                      error: (value.error as any).toString(),
+                    })
                     await Session.updatePart({
                       ...match,
                       state: {

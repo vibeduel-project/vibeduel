@@ -15,6 +15,9 @@ const duelWorktrees = new Map<string, string>()
 // Tracks which duel IDs have had their worktrees created
 const createdWorktrees = new Set<string>()
 
+// In-flight creation promises to prevent race conditions
+const inflightCreations = new Map<string, Promise<{ left: string; right: string }>>()
+
 export function setDuel(sessionID: string, duelSessionId: string): void {
   log.info("setDuel", { sessionID, duelSessionId })
   activeDuels.set(sessionID, duelSessionId)
@@ -52,13 +55,50 @@ export async function createDuelWorktrees(duelId: string, repoPath: string): Pro
     return { left, right }
   }
 
+  // If another call is already creating these worktrees, wait for it
+  const inflight = inflightCreations.get(duelId)
+  if (inflight) {
+    log.info("createDuelWorktrees: waiting on in-flight creation", { duelId })
+    return inflight
+  }
+
+  const promise = doCreateWorktrees(duelId, repoPath, left, right)
+  inflightCreations.set(duelId, promise)
+  try {
+    return await promise
+  } finally {
+    inflightCreations.delete(duelId)
+  }
+}
+
+async function doCreateWorktrees(duelId: string, repoPath: string, left: string, right: string): Promise<{ left: string; right: string }> {
   log.info("createDuelWorktrees: creating new worktrees", { duelId, repoPath, left, right })
 
+  // Clean up stale worktrees from previous app runs
+  const baseDir = `/tmp/opencode-duel-${duelId}`
+  if (await $`test -d ${baseDir}`.quiet().nothrow().then(r => r.exitCode === 0)) {
+    log.info("createDuelWorktrees: cleaning up stale worktrees", { duelId, baseDir })
+    await $`git worktree remove ${left} --force`.cwd(repoPath).quiet().nothrow()
+    await $`git worktree remove ${right} --force`.cwd(repoPath).quiet().nothrow()
+    await $`rm -rf ${baseDir}`.quiet().nothrow()
+    await $`git worktree prune`.cwd(repoPath).quiet().nothrow()
+  }
+
+  // Log source directory contents before cloning
+  const sourceDump = await $`find ${repoPath} -maxdepth 2 -type f -not -path '*/\.git/*' -exec sh -c 'echo "=== {} ===" && cat "{}"' \;`.cwd(repoPath).quiet().text()
+  log.info("createDuelWorktrees: source directory contents", { duelId, repoPath, dump: sourceDump.trim() })
+
+  // Create worktrees from HEAD, then overlay working directory contents
+  // so worktrees match what's on disk, not just what's committed
   await $`git worktree add ${left} HEAD --detach`.cwd(repoPath).quiet()
-  log.info("createDuelWorktrees: left worktree created", { duelId, left })
+  await $`rsync -a --exclude=.git ${repoPath}/ ${left}/`.quiet()
+  const leftDump = await $`find ${left} -maxdepth 2 -type f -not -path '*/\.git/*' -exec sh -c 'echo "=== {} ===" && cat "{}"' \;`.quiet().text()
+  log.info("createDuelWorktrees: left worktree created (with working dir overlay)", { duelId, left, dump: leftDump.trim() })
 
   await $`git worktree add ${right} HEAD --detach`.cwd(repoPath).quiet()
-  log.info("createDuelWorktrees: right worktree created", { duelId, right })
+  await $`rsync -a --exclude=.git ${repoPath}/ ${right}/`.quiet()
+  const rightDump = await $`find ${right} -maxdepth 2 -type f -not -path '*/\.git/*' -exec sh -c 'echo "=== {} ===" && cat "{}"' \;`.quiet().text()
+  log.info("createDuelWorktrees: right worktree created (with working dir overlay)", { duelId, right, dump: rightDump.trim() })
 
   createdWorktrees.add(duelId)
   return { left, right }
