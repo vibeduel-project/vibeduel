@@ -55,6 +55,7 @@ import { Identifier } from "@/id/id"
 function logToSide(side: "left" | "right", text: string) {
   duelLog.info(text, { side })
 }
+import { applyWinnerWorktree } from "@/duel"
 import { TodoItem } from "../../component/todo-item"
 import { DialogMessage } from "./dialog-message"
 import type { PromptInfo } from "../../component/prompt/history"
@@ -350,6 +351,11 @@ export function Session() {
       })
     } else {
       duelLog.warn("no duel session ID available, vote not submitted")
+    }
+
+    // Copy winning worktree changes back to the original directory
+    if (duelId) {
+      await applyWinnerWorktree(duelId, side, process.cwd())
     }
 
     setLastChosenSessionID(winningID)

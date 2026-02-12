@@ -104,6 +104,19 @@ async function doCreateWorktrees(duelId: string, repoPath: string, left: string,
   return { left, right }
 }
 
+export async function applyWinnerWorktree(duelId: string, winningSide: "left" | "right", repoPath: string): Promise<void> {
+  const worktree = `/tmp/opencode-duel-${duelId}/${winningSide}`
+  log.info("applyWinnerWorktree: copying winner changes back", { duelId, winningSide, worktree, repoPath })
+
+  const winnerDump = await $`find ${worktree} -maxdepth 2 -type f -not -path '*/\.git/*' -exec sh -c 'echo "=== {} ===" && cat "{}"' \;`.quiet().text()
+  log.info("applyWinnerWorktree: winner worktree contents", { duelId, winningSide, dump: winnerDump.trim() })
+
+  await $`rsync -a --exclude=.git ${worktree}/ ${repoPath}/`.quiet()
+
+  const resultDump = await $`find ${repoPath} -maxdepth 2 -type f -not -path '*/\.git/*' -exec sh -c 'echo "=== {} ===" && cat "{}"' \;`.cwd(repoPath).quiet().text()
+  log.info("applyWinnerWorktree: original directory after copy-back", { duelId, repoPath, dump: resultDump.trim() })
+}
+
 // Generate a duel session ID (called from TUI side)
 export function generateDuelId(): string {
   return `duel_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`
