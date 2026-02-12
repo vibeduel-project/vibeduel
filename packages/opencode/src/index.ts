@@ -1,32 +1,32 @@
 import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
-import { RunCommand } from "./cli/cmd/run"
-import { GenerateCommand } from "./cli/cmd/generate"
+// import { RunCommand } from "./cli/cmd/run"
+// import { GenerateCommand } from "./cli/cmd/generate"
 import { Log } from "./util/log"
-import { AuthCommand } from "./cli/cmd/auth"
-import { AgentCommand } from "./cli/cmd/agent"
-import { UpgradeCommand } from "./cli/cmd/upgrade"
-import { UninstallCommand } from "./cli/cmd/uninstall"
-import { ModelsCommand } from "./cli/cmd/models"
+// import { AuthCommand } from "./cli/cmd/auth"
+// import { AgentCommand } from "./cli/cmd/agent"
+// import { UpgradeCommand } from "./cli/cmd/upgrade"
+// import { UninstallCommand } from "./cli/cmd/uninstall"
+// import { ModelsCommand } from "./cli/cmd/models"
 import { UI } from "./cli/ui"
 import { Installation } from "./installation"
 import { NamedError } from "@opencode-ai/util/error"
 import { FormatError } from "./cli/error"
-import { ServeCommand } from "./cli/cmd/serve"
-import { DebugCommand } from "./cli/cmd/debug"
-import { StatsCommand } from "./cli/cmd/stats"
-import { McpCommand } from "./cli/cmd/mcp"
-import { GithubCommand } from "./cli/cmd/github"
-import { ExportCommand } from "./cli/cmd/export"
-import { ImportCommand } from "./cli/cmd/import"
+// import { ServeCommand } from "./cli/cmd/serve"
+// import { DebugCommand } from "./cli/cmd/debug"
+// import { StatsCommand } from "./cli/cmd/stats"
+// import { McpCommand } from "./cli/cmd/mcp"
+// import { GithubCommand } from "./cli/cmd/github"
+// import { ExportCommand } from "./cli/cmd/export"
+// import { ImportCommand } from "./cli/cmd/import"
 import { AttachCommand } from "./cli/cmd/tui/attach"
 import { TuiThreadCommand } from "./cli/cmd/tui/thread"
 import { TuiSpawnCommand } from "./cli/cmd/tui/spawn"
-import { AcpCommand } from "./cli/cmd/acp"
+// import { AcpCommand } from "./cli/cmd/acp"
 import { EOL } from "os"
-import { WebCommand } from "./cli/cmd/web"
-import { PrCommand } from "./cli/cmd/pr"
-import { SessionCommand } from "./cli/cmd/session"
+// import { WebCommand } from "./cli/cmd/web"
+// import { PrCommand } from "./cli/cmd/pr"
+// import { SessionCommand } from "./cli/cmd/session"
 
 process.on("unhandledRejection", (e) => {
   Log.Default.error("rejection", {
@@ -78,27 +78,27 @@ const cli = yargs(hideBin(process.argv))
   })
   .usage("\n" + UI.logo())
   .completion("completion", "generate shell completion script")
-  .command(AcpCommand)
-  .command(McpCommand)
+  // .command(AcpCommand)
+  // .command(McpCommand)
   .command(TuiThreadCommand)
   .command(TuiSpawnCommand)
   .command(AttachCommand)
-  .command(RunCommand)
-  .command(GenerateCommand)
-  .command(DebugCommand)
-  .command(AuthCommand)
-  .command(AgentCommand)
-  .command(UpgradeCommand)
-  .command(UninstallCommand)
-  .command(ServeCommand)
-  .command(WebCommand)
-  .command(ModelsCommand)
-  .command(StatsCommand)
-  .command(ExportCommand)
-  .command(ImportCommand)
-  .command(GithubCommand)
-  .command(PrCommand)
-  .command(SessionCommand)
+  // .command(RunCommand)
+  // .command(GenerateCommand)
+  // .command(DebugCommand)
+  // .command(AuthCommand)
+  // .command(AgentCommand)
+  // .command(UpgradeCommand)
+  // .command(UninstallCommand)
+  // .command(ServeCommand)
+  // .command(WebCommand)
+  // .command(ModelsCommand)
+  // .command(StatsCommand)
+  // .command(ExportCommand)
+  // .command(ImportCommand)
+  // .command(GithubCommand)
+  // .command(PrCommand)
+  // .command(SessionCommand)
   .fail((msg) => {
     if (
       msg.startsWith("Unknown argument") ||
