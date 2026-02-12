@@ -88,17 +88,42 @@ async function doCreateWorktrees(duelId: string, repoPath: string, left: string,
   const sourceDump = await $`find ${repoPath} -maxdepth 2 -type f -not -path '*/\.git/*' -exec sh -c 'echo "=== {} ===" && cat "{}"' \;`.cwd(repoPath).quiet().text()
   log.info("createDuelWorktrees: source directory contents", { duelId, repoPath, dump: sourceDump.trim() })
 
-  // Create worktrees from HEAD, then overlay working directory contents
-  // so worktrees match what's on disk, not just what's committed
+  // Create worktrees from HEAD, then overlay only uncommitted/modified files
+  // so worktrees match what's on disk without copying the entire directory
   await $`git worktree add ${left} HEAD --detach`.cwd(repoPath).quiet()
-  await $`rsync -a --exclude=.git ${repoPath}/ ${left}/`.quiet()
-  const leftDump = await $`find ${left} -maxdepth 2 -type f -not -path '*/\.git/*' -exec sh -c 'echo "=== {} ===" && cat "{}"' \;`.quiet().text()
-  log.info("createDuelWorktrees: left worktree created (with working dir overlay)", { duelId, left, dump: leftDump.trim() })
-
   await $`git worktree add ${right} HEAD --detach`.cwd(repoPath).quiet()
-  await $`rsync -a --exclude=.git ${repoPath}/ ${right}/`.quiet()
+
+  // Get list of files that differ from HEAD (modified, untracked, deleted)
+  const modifiedRaw = await $`git diff --name-only HEAD`.cwd(repoPath).quiet().text()
+  const untrackedRaw = await $`git ls-files --others --exclude-standard`.cwd(repoPath).quiet().text()
+  const dirtyFiles = [...new Set([
+    ...modifiedRaw.trim().split("\n"),
+    ...untrackedRaw.trim().split("\n"),
+  ])].filter(f => f.length > 0)
+
+  log.info("createDuelWorktrees: overlaying dirty files", { duelId, count: dirtyFiles.length, files: dirtyFiles })
+
+  for (const file of dirtyFiles) {
+    const srcPath = `${repoPath}/${file}`
+    const srcExists = await Bun.file(srcPath).exists()
+    if (srcExists) {
+      // Copy modified/untracked file to both worktrees
+      await $`mkdir -p ${left}/${file.substring(0, file.lastIndexOf("/") + 1)}`.quiet().nothrow()
+      await $`mkdir -p ${right}/${file.substring(0, file.lastIndexOf("/") + 1)}`.quiet().nothrow()
+      await $`cp ${srcPath} ${left}/${file}`.quiet()
+      await $`cp ${srcPath} ${right}/${file}`.quiet()
+    } else {
+      // File was deleted in working dir — remove from worktrees too
+      await $`rm -f ${left}/${file}`.quiet().nothrow()
+      await $`rm -f ${right}/${file}`.quiet().nothrow()
+    }
+  }
+
+  const leftDump = await $`find ${left} -maxdepth 2 -type f -not -path '*/\.git/*' -exec sh -c 'echo "=== {} ===" && cat "{}"' \;`.quiet().text()
+  log.info("createDuelWorktrees: left worktree created", { duelId, left, dirtyCount: dirtyFiles.length, dump: leftDump.trim() })
+
   const rightDump = await $`find ${right} -maxdepth 2 -type f -not -path '*/\.git/*' -exec sh -c 'echo "=== {} ===" && cat "{}"' \;`.quiet().text()
-  log.info("createDuelWorktrees: right worktree created (with working dir overlay)", { duelId, right, dump: rightDump.trim() })
+  log.info("createDuelWorktrees: right worktree created", { duelId, right, dirtyCount: dirtyFiles.length, dump: rightDump.trim() })
 
   createdWorktrees.add(duelId)
   return { left, right }
