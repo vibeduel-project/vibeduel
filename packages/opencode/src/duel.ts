@@ -133,13 +133,32 @@ export async function applyWinnerWorktree(duelId: string, winningSide: "left" | 
   const worktree = `/tmp/opencode-duel-${duelId}/${winningSide}`
   log.info("applyWinnerWorktree: copying winner changes back", { duelId, winningSide, worktree, repoPath })
 
-  const winnerDump = await $`find ${worktree} -maxdepth 2 -type f -not -path '*/\.git/*' -exec sh -c 'echo "=== {} ===" && cat "{}"' \;`.quiet().text()
-  log.info("applyWinnerWorktree: winner worktree contents", { duelId, winningSide, dump: winnerDump.trim() })
+  // Only copy files that the model actually changed (diff against HEAD),
+  // NOT the entire worktree (which contains the full monorepo)
+  const modifiedRaw = await $`git diff --name-only HEAD`.cwd(worktree).quiet().text()
+  const untrackedRaw = await $`git ls-files --others --exclude-standard`.cwd(worktree).quiet().text()
+  const changedFiles = [...new Set([
+    ...modifiedRaw.trim().split("\n"),
+    ...untrackedRaw.trim().split("\n"),
+  ])].filter(f => f.length > 0)
 
-  await $`rsync -a --exclude=.git ${worktree}/ ${repoPath}/`.quiet()
+  log.info("applyWinnerWorktree: changed files", { duelId, winningSide, count: changedFiles.length, files: changedFiles })
 
-  const resultDump = await $`find ${repoPath} -maxdepth 2 -type f -not -path '*/\.git/*' -exec sh -c 'echo "=== {} ===" && cat "{}"' \;`.cwd(repoPath).quiet().text()
-  log.info("applyWinnerWorktree: original directory after copy-back", { duelId, repoPath, dump: resultDump.trim() })
+  for (const file of changedFiles) {
+    const srcPath = `${worktree}/${file}`
+    const dstPath = `${repoPath}/${file}`
+    const srcExists = await Bun.file(srcPath).exists()
+    if (srcExists) {
+      await $`mkdir -p ${dstPath.substring(0, dstPath.lastIndexOf("/") + 1)}`.quiet().nothrow()
+      await $`cp ${srcPath} ${dstPath}`.quiet()
+      log.info("applyWinnerWorktree: copied file", { duelId, file })
+    } else {
+      await $`rm -f ${dstPath}`.quiet().nothrow()
+      log.info("applyWinnerWorktree: removed file", { duelId, file })
+    }
+  }
+
+  log.info("applyWinnerWorktree: done", { duelId, winningSide, filesCopied: changedFiles.length })
 }
 
 // Generate a duel session ID (called from TUI side)
