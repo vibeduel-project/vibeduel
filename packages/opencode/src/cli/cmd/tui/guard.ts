@@ -1,7 +1,7 @@
 import { UI } from "@/cli/ui"
 import { Auth } from "@/auth"
 
-const OPENINFERENCE_KEY_URL = "https://YOUR_ZUPLO_KEYGEN_URL_HERE"
+const OPENINFERENCE_KEY_URL = "https://vibeduel.ai/keys"
 
 export async function requireOpenInferenceKey() {
   // Check environment for the API key (Bun.env can differ from process.env)

@@ -139,6 +139,21 @@ export function Session() {
   const sdk = useSDK()
   const local = useLocal()
 
+  const [credits, setCredits] = createSignal<number | null>(null)
+  async function fetchCredits() {
+    const baseURL = process.env["OPENINFERENCE_BASE_URL"] ?? "http://localhost:7001/v1"
+    const apiKey = process.env["OPENINFERENCE_API_KEY"]
+    if (!apiKey) return
+    const res = await fetch(`${baseURL.replace(/\/v1$/, "")}/v1/credits`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    })
+    if (res.ok) {
+      const data = await res.json()
+      setCredits(data.credits)
+    }
+  }
+  fetchCredits()
+
   const [sidebar, setSidebar] = createSignal<"show" | "hide" | "auto">(kv.get("sidebar", "hide"))
   const [conceal, setConceal] = createSignal(true)
   const [showThinking, setShowThinking] = createSignal(kv.get("thinking_visibility", true))
@@ -501,9 +516,9 @@ export function Session() {
           <box flexDirection="column" alignItems="flex-end">
             <box flexDirection="row" gap={2} alignItems="center">
               <text fg={theme.textMuted} wrapMode="none">
-                {tokenContext() ?? "—"} ({cost()})
+                {tokenContext() ?? "—"}
               </text>
-              <text fg={theme.textMuted} wrapMode="none">TPU credits: —</text>
+              <text fg={theme.textMuted} wrapMode="none">Credits: {credits() !== null ? credits() : "—"}</text>
             </box>
           </box>
         </box>
@@ -604,6 +619,7 @@ export function Session() {
                     promptRef.set(r)
                   }}
                   onSubmit={async (_sessionID, _promptInfo, duelSessionId) => {
+                    fetchCredits()
                     const winner = pendingForkWinner()
                     duelLog.info("onSubmit fired", {
                       duelSessionId,

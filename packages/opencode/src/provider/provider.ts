@@ -1009,6 +1009,9 @@ export namespace Provider {
         npm: model.api.npm,
         baseURL: options["baseURL"],
         hasApiKey: !!options["apiKey"],
+        apiKeyPrefix: options["apiKey"] ? String(options["apiKey"]).slice(0, 8) + "..." : "NONE",
+        providerKey: provider.key ? String(provider.key).slice(0, 8) + "..." : "NONE",
+        envKey: Env.get("OPENINFERENCE_API_KEY") ? String(Env.get("OPENINFERENCE_API_KEY")).slice(0, 8) + "..." : "NONE",
       })
 
       const key = Bun.hash.xxHash32(JSON.stringify({ npm: model.api.npm, options }))
@@ -1024,11 +1027,15 @@ export namespace Provider {
 
         // Log the fetch call for debugging
         const url = typeof input === "string" ? input : input?.url ?? input?.toString() ?? "unknown"
+        const reqHeaders = opts.headers as Record<string, string> | undefined
         log.info("Provider fetch", {
           providerID: model.providerID,
           modelID: model.id,
           url,
           method: opts.method ?? init?.method ?? "GET",
+          hasAuthHeader: !!reqHeaders?.["Authorization"],
+          authPrefix: reqHeaders?.["Authorization"] ? reqHeaders["Authorization"].slice(0, 15) + "..." : "NONE",
+          headerKeys: reqHeaders ? Object.keys(reqHeaders) : [],
         })
 
         if (options["timeout"] !== undefined && options["timeout"] !== null) {
@@ -1074,11 +1081,18 @@ export namespace Provider {
           }
         }
 
-        return fetchFn(input, {
+        const response = await fetchFn(input, {
           ...opts,
           // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
           timeout: false,
         })
+        log.info("Provider fetch response", {
+          url,
+          status: response.status,
+          statusText: response.statusText,
+          ok: response.ok,
+        })
+        return response
       }
 
       // Special case: google-vertex-anthropic uses a subpath import
