@@ -1,6 +1,6 @@
 import { cmd } from "../cmd"
 import { tui } from "./app"
-import { requireOpenInferenceKey } from "./guard"
+import { requireVibeDuelKey } from "./guard"
 
 export const AttachCommand = cmd({
   command: "attach <url>",
@@ -22,7 +22,7 @@ export const AttachCommand = cmd({
         describe: "session id to continue",
       }),
   handler: async (args) => {
-    await requireOpenInferenceKey()
+    await requireVibeDuelKey()
     if (args.dir) process.chdir(args.dir)
     await tui({
       url: args.url,

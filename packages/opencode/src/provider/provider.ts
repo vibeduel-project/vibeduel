@@ -138,8 +138,8 @@ export namespace Provider {
         options: {},
       }
     },
-    openinference: async () => {
-      const baseURL = Env.get("OPENINFERENCE_BASE_URL") ?? "http://localhost:7001/v1"
+    vibeduel: async () => {
+      const baseURL = Env.get("VIBEDUEL_BASE_URL") ?? "http://localhost:7001/v1"
       log.info("VibeDuel custom loader", { baseURL })
       return {
         autoload: true,
@@ -661,23 +661,23 @@ export namespace Provider {
 
     // Clear the database and only use VibeDuel
     const database: { [providerID: string]: Info } = {}
-    const openInferenceBaseURL = Env.get("OPENINFERENCE_BASE_URL") ?? "http://localhost:7001/v1"
+    const vibeDuelBaseURL = Env.get("VIBEDUEL_BASE_URL") ?? "http://localhost:7001/v1"
 
-    database["openinference"] = {
-      id: "openinference",
+    database["vibeduel"] = {
+      id: "vibeduel",
       source: "custom",
       name: "VibeDuel",
-      env: ["OPENINFERENCE_API_KEY"],
+      env: ["VIBEDUEL_API_KEY"],
       options: {
-        baseURL: openInferenceBaseURL,
+        baseURL: vibeDuelBaseURL,
       },
       models: {},
     }
 
     log.info("[VibeDuel] Provider initialized", {
-      baseURL: openInferenceBaseURL,
-      apiKeyEnvVar: "OPENINFERENCE_API_KEY",
-      apiKeySet: !!Env.get("OPENINFERENCE_API_KEY"),
+      baseURL: vibeDuelBaseURL,
+      apiKeyEnvVar: "VIBEDUEL_API_KEY",
+      apiKeySet: !!Env.get("VIBEDUEL_API_KEY"),
     })
 
     const disabled = new Set(config.disabled_providers ?? [])
@@ -809,14 +809,14 @@ export namespace Provider {
       if (!baseURL) return
 
       const usesOpenAICompatible =
-        providerID === "openinference" ||
+        providerID === "vibeduel" ||
         modelList.some((model) => model.api.npm.includes("@ai-sdk/openai-compatible")) ||
         (modelList.length === 0 && provider.options?.baseURL)
       if (!usesOpenAICompatible) return
 
       const apiKey = provider.env.map((item) => env[item]).find(Boolean)
       const headers = apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined
-      const endpoint = providerID === "openinference"
+      const endpoint = providerID === "vibeduel"
         ? `${normalizeBaseURL(baseURL)}/usable_models`
         : `${normalizeBaseURL(baseURL)}/models`
 
@@ -840,7 +840,7 @@ export namespace Provider {
           return
         }
         const data = (await response.json().catch(() => null)) as any
-        const ids: string[] = providerID === "openinference"
+        const ids: string[] = providerID === "vibeduel"
           ? (Array.isArray(data?.models) ? data.models.filter((id: unknown): id is string => typeof id === "string" && id.length > 0) : [])
           : (Array.isArray(data?.data)
               ? data.data
@@ -852,7 +852,7 @@ export namespace Provider {
 
         if (ids.length === 0) return
 
-        if (providerID === "openinference" && !ids.includes("duel")) {
+        if (providerID === "vibeduel" && !ids.includes("duel")) {
           ids.push("duel")
         }
 
@@ -1011,7 +1011,7 @@ export namespace Provider {
         hasApiKey: !!options["apiKey"],
         apiKeyPrefix: options["apiKey"] ? String(options["apiKey"]).slice(0, 8) + "..." : "NONE",
         providerKey: provider.key ? String(provider.key).slice(0, 8) + "..." : "NONE",
-        envKey: Env.get("OPENINFERENCE_API_KEY") ? String(Env.get("OPENINFERENCE_API_KEY")).slice(0, 8) + "..." : "NONE",
+        envKey: Env.get("VIBEDUEL_API_KEY") ? String(Env.get("VIBEDUEL_API_KEY")).slice(0, 8) + "..." : "NONE",
       })
 
       const key = Bun.hash.xxHash32(JSON.stringify({ npm: model.api.npm, options }))
@@ -1255,7 +1255,7 @@ export namespace Provider {
     if (!provider) throw new Error("no providers found")
 
     // For VibeDuel, prefer "duel" as default
-    if (provider.id === "openinference") {
+    if (provider.id === "vibeduel") {
       const defaultModelID = "duel"
       const defaultModel = provider.models[defaultModelID]
       if (defaultModel) {

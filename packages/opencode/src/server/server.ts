@@ -1693,7 +1693,7 @@ export namespace Server {
           const config = await Config.get()
           const disabled = new Set(config.disabled_providers ?? [])
           const enabled = config.enabled_providers ? new Set(config.enabled_providers) : undefined
-          const allowedProviders = new Set(["openinference"])
+          const allowedProviders = new Set(["vibeduel"])
 
           const allProviders = await ModelsDev.get()
           const filteredProviders: Record<string, (typeof allProviders)[string]> = {}
@@ -1739,7 +1739,7 @@ export namespace Server {
         async (c) => {
           const methods = await ProviderAuth.methods()
           return c.json(
-            Object.fromEntries(Object.entries(methods).filter(([providerID]) => providerID === "openinference")),
+            Object.fromEntries(Object.entries(methods).filter(([providerID]) => providerID === "vibeduel")),
           )
         },
       )

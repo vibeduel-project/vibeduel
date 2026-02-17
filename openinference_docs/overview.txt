@@ -1,5 +1,5 @@
-this is openinference's fork of opencode. open inference is launching a "chatbot arena for coding". 
-this fork powered exclusively by the openinference proxy defined in "/home/mark/vllm_server_code_votes".
+this is vibeduel's fork of opencode. open inference is launching a "chatbot arena for coding". 
+this fork powered exclusively by the vibeduel proxy defined in "/home/mark/vllm_server_code_votes".
 user uses duel mode by setting model to "duel", or normal mode by setting model to anything else
 currently, the app is effectively ready for launch - the only thing remaining is making edit permissionprompts non-blocking
 
