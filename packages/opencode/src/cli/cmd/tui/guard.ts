@@ -22,7 +22,7 @@ export async function requireOpenInferenceKey() {
   }
 
   UI.empty()
-  UI.println(UI.Style.TEXT_INFO_BOLD + "OpenInference API Key Required" + UI.Style.TEXT_NORMAL)
+  UI.println(UI.Style.TEXT_INFO_BOLD + "VibeDuel API Key Required" + UI.Style.TEXT_NORMAL)
   UI.println(UI.Style.TEXT_DIM + `Create a key at: ${OPENINFERENCE_KEY_URL}` + UI.Style.TEXT_NORMAL)
   UI.empty()
 

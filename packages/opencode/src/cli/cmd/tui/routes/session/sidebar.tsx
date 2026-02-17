@@ -289,7 +289,7 @@ export function Sidebar(props: { sessionID: string }) {
                     ✕
                   </text>
                 </box>
-                <text fg={theme.textMuted}>OpenInference is required for model access.</text>
+                <text fg={theme.textMuted}>VibeDuel is required for model access.</text>
               </box>
             </box>
           </Show>

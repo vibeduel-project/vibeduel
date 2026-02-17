@@ -140,31 +140,31 @@ export namespace Provider {
     },
     openinference: async () => {
       const baseURL = Env.get("OPENINFERENCE_BASE_URL") ?? "http://localhost:7001/v1"
-      log.info("OpenInference custom loader", { baseURL })
+      log.info("VibeDuel custom loader", { baseURL })
       return {
         autoload: true,
         options: {
           baseURL,
         },
         async getModel(sdk: any, modelID: string, _options?: Record<string, any>) {
-          log.info("OpenInference getModel called", { modelID, sdkMethods: Object.keys(sdk).filter(k => typeof sdk[k] === "function") })
+          log.info("VibeDuel getModel called", { modelID, sdkMethods: Object.keys(sdk).filter(k => typeof sdk[k] === "function") })
           if (typeof sdk.languageModel === "function") {
-            log.info("Using sdk.languageModel for OpenInference")
+            log.info("Using sdk.languageModel for VibeDuel")
             return sdk.languageModel(modelID)
           }
           if (typeof sdk.chat === "function") {
-            log.info("Using sdk.chat for OpenInference")
+            log.info("Using sdk.chat for VibeDuel")
             return sdk.chat(modelID)
           }
           if (typeof sdk.responses === "function") {
-            log.info("Using sdk.responses for OpenInference")
+            log.info("Using sdk.responses for VibeDuel")
             return sdk.responses(modelID)
           }
           if (typeof sdk === "function") {
-            log.info("Using sdk as function for OpenInference")
+            log.info("Using sdk as function for VibeDuel")
             return sdk(modelID)
           }
-          throw new Error("OpenInference provider does not support chat models")
+          throw new Error("VibeDuel provider does not support chat models")
         },
       }
     },
@@ -659,14 +659,14 @@ export namespace Provider {
     using _ = log.time("state")
     const config = await Config.get()
 
-    // Clear the database and only use OpenInference
+    // Clear the database and only use VibeDuel
     const database: { [providerID: string]: Info } = {}
     const openInferenceBaseURL = Env.get("OPENINFERENCE_BASE_URL") ?? "http://localhost:7001/v1"
 
     database["openinference"] = {
       id: "openinference",
       source: "custom",
-      name: "OpenInference",
+      name: "VibeDuel",
       env: ["OPENINFERENCE_API_KEY"],
       options: {
         baseURL: openInferenceBaseURL,
@@ -674,7 +674,7 @@ export namespace Provider {
       models: {},
     }
 
-    log.info("[OpenInference] Provider initialized", {
+    log.info("[VibeDuel] Provider initialized", {
       baseURL: openInferenceBaseURL,
       apiKeyEnvVar: "OPENINFERENCE_API_KEY",
       apiKeySet: !!Env.get("OPENINFERENCE_API_KEY"),
@@ -820,7 +820,7 @@ export namespace Provider {
         ? `${normalizeBaseURL(baseURL)}/usable_models`
         : `${normalizeBaseURL(baseURL)}/models`
 
-      log.info(`[OpenInference] Fetching models for ${providerID}`, {
+      log.info(`[VibeDuel] Fetching models for ${providerID}`, {
         baseURL,
         endpoint,
         hasApiKey: !!apiKey,
@@ -848,7 +848,7 @@ export namespace Provider {
                   .filter((id: unknown): id is string => typeof id === "string" && id.length > 0)
               : [])
 
-        log.info(`[OpenInference] Found ${ids.length} models for ${providerID}`, { modelIds: ids })
+        log.info(`[VibeDuel] Found ${ids.length} models for ${providerID}`, { modelIds: ids })
 
         if (ids.length === 0) return
 
@@ -898,7 +898,7 @@ export namespace Provider {
       }
     }
 
-    // Plugin loading removed - only OpenInference provider is used
+    // Plugin loading removed - only VibeDuel provider is used
 
     for (const [providerID, fn] of Object.entries(CUSTOM_LOADERS)) {
       if (disabled.has(providerID)) continue
@@ -1254,7 +1254,7 @@ export namespace Provider {
       .then((x) => x.find((p) => !cfg.provider || Object.keys(cfg.provider).includes(p.id)))
     if (!provider) throw new Error("no providers found")
 
-    // For OpenInference, prefer "OpenAI gpt oss 20B" as default
+    // For VibeDuel, prefer "duel" as default
     if (provider.id === "openinference") {
       const defaultModelID = "duel"
       const defaultModel = provider.models[defaultModelID]
