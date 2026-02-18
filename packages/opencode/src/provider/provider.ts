@@ -139,7 +139,7 @@ export namespace Provider {
       }
     },
     vibeduel: async () => {
-      const baseURL = Env.get("VIBEDUEL_BASE_URL") ?? "http://localhost:7001/v1"
+      const baseURL = Env.get("VIBEDUEL_BASE_URL") ?? "https://api.vibeduel.ai/v1"
       log.info("VibeDuel custom loader", { baseURL })
       return {
         autoload: true,
@@ -661,7 +661,7 @@ export namespace Provider {
 
     // Clear the database and only use VibeDuel
     const database: { [providerID: string]: Info } = {}
-    const vibeDuelBaseURL = Env.get("VIBEDUEL_BASE_URL") ?? "http://localhost:7001/v1"
+    const vibeDuelBaseURL = Env.get("VIBEDUEL_BASE_URL") ?? "https://api.vibeduel.ai/v1"
 
     database["vibeduel"] = {
       id: "vibeduel",

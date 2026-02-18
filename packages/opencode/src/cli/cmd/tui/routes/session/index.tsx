@@ -141,7 +141,7 @@ export function Session() {
 
   const [credits, setCredits] = createSignal<number | null>(null)
   async function fetchCredits() {
-    const baseURL = process.env["VIBEDUEL_BASE_URL"] ?? "http://localhost:7001/v1"
+    const baseURL = process.env["VIBEDUEL_BASE_URL"] ?? "https://api.vibeduel.ai/v1"
     const apiKey = process.env["VIBEDUEL_API_KEY"]
     if (!apiKey) return
     const res = await fetch(`${baseURL.replace(/\/v1$/, "")}/v1/credits`, {
@@ -340,7 +340,7 @@ export function Session() {
 
     // Submit vote to backend
     if (duelId) {
-      const baseURL = process.env["VIBEDUEL_BASE_URL"] ?? "http://localhost:7001/v1"
+      const baseURL = process.env["VIBEDUEL_BASE_URL"] ?? "https://api.vibeduel.ai/v1"
       const apiKey = process.env["VIBEDUEL_API_KEY"]
       const res = await fetch(`${baseURL.replace(/\/v1$/, "")}/v1/duel/vote`, {
         method: "POST",
