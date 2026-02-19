@@ -5,7 +5,7 @@ A community-driven AI coding assistant for your terminal. Fork of [OpenCode](htt
 ## Install
 
 ```bash
-work in progress
+work in progress...
 ```
 
 The install script will:
