@@ -5,11 +5,7 @@ A community-driven AI coding assistant for your terminal. Fork of [OpenCode](htt
 ## Install
 
 ```bash
-git clone https://github.com/vibeduel/opencode.git
-cd opencode
-bash install.sh
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
-source ~/.zshrc
+work in progress
 ```
 
 The install script will:

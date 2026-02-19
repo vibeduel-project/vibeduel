@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g. 1.0.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.8"
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build all platforms
+        working-directory: packages/opencode
+        run: bun run script/build.ts
+
+      - name: Package archives
+        working-directory: packages/opencode/dist
+        run: |
+          for dir in opencode-linux-*; do
+            [ -d "$dir/bin" ] || continue
+            tar -czf "${dir}.tar.gz" -C "${dir}/bin" opencode
+            echo "Created ${dir}.tar.gz"
+          done
+
+          for dir in opencode-darwin-* opencode-windows-*; do
+            [ -d "$dir/bin" ] || continue
+            cd "${dir}/bin"
+            zip "../../${dir}.zip" opencode*
+            cd ../..
+            echo "Created ${dir}.zip"
+          done
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd packages/opencode/dist
+          gh release create "v${{ inputs.version }}" \
+            --title "v${{ inputs.version }}" \
+            --generate-notes \
+            *.tar.gz *.zip
