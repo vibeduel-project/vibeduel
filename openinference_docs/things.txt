@@ -1,5 +1,0 @@
-we give 1 worktree to each model in duel mode
-when you vote for either side, their worktree changes will be merged into your code
-- if you make changes to your files while a duel is happening, the worktrees will not update
-in duel mode everything is auto-approve - it wont work otherwise
-your permissions config will only effect normal mode
