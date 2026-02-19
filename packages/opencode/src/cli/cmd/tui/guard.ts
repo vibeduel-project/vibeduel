@@ -1,9 +1,17 @@
 import { UI } from "@/cli/ui"
 import { Auth } from "@/auth"
+import { execSync } from "child_process"
 
 const VIBEDUEL_KEY_URL = "https://vibeduel.ai/keys"
 
 export async function requireVibeDuelKey() {
+  // Ensure we're inside a git repo
+  try {
+    execSync("git rev-parse --is-inside-work-tree", { stdio: "ignore" })
+  } catch {
+    UI.error("VibeDuel must be run inside a git repository.")
+    process.exit(1)
+  }
   // Check environment for the API key (Bun.env can differ from process.env)
   const bunEnv =
     typeof Bun !== "undefined"
