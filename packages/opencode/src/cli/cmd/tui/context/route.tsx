@@ -1,0 +1,63 @@
+import { createStore } from "solid-js/store"
+import { createSimpleContext } from "./helper"
+import type { PromptInfo } from "../component/prompt/history"
+
+export type HomeRoute = {
+  type: "home"
+  initialPrompt?: PromptInfo
+}
+
+export type SessionRoute = {
+  type: "session"
+  sessionID: string
+  rightSessionID?: string
+  initialPrompt?: PromptInfo
+  duelSessionId?: string
+}
+
+export type Route = HomeRoute | SessionRoute
+
+export const { use: useRoute, provider: RouteProvider } = createSimpleContext({
+  name: "Route",
+  init: () => {
+    const [store, setStore] = createStore<Route>(
+      process.env["OPENCODE_ROUTE"]
+        ? JSON.parse(process.env["OPENCODE_ROUTE"])
+        : {
+          type: "home",
+        },
+    )
+
+    return {
+      get data() {
+        return store
+      },
+      navigate(route: Route) {
+        console.log("navigate", route)
+        if (route.type === "session") {
+          setStore({
+            type: "session",
+            sessionID: route.sessionID,
+            rightSessionID: route.rightSessionID ?? undefined,
+            initialPrompt: route.initialPrompt,
+            duelSessionId: route.duelSessionId,
+          } as any)
+          return
+        }
+        setStore({
+          type: "home",
+          sessionID: undefined,
+          rightSessionID: undefined,
+          initialPrompt: route.initialPrompt,
+        } as any)
+      },
+    }
+  },
+})
+
+export type RouteContext = ReturnType<typeof useRoute>
+
+export function useRouteData<T extends Route["type"]>(type: T) {
+  const route = useRoute()
+  return route.data as Extract<Route, { type: typeof type }>
+}
