@@ -143,7 +143,7 @@ else
     fi
 fi
 
-INSTALL_DIR=$HOME/.opencode/bin
+INSTALL_DIR=$HOME/.vibeduel/bin
 mkdir -p "$INSTALL_DIR"
 
 if [ -z "$requested_version" ]; then
@@ -184,8 +184,8 @@ print_message() {
 }
 
 check_version() {
-    if command -v opencode >/dev/null 2>&1; then
-        opencode_path=$(which opencode)
+    if command -v vibeduel >/dev/null 2>&1; then
+        vibeduel_path=$(which vibeduel)
 
 
         ## TODO: check if version is installed
@@ -293,7 +293,7 @@ download_with_progress() {
 }
 
 download_and_install() {
-    print_message info "\n${MUTED}Installing ${NC}opencode ${MUTED}version: ${NC}$specific_version"
+    print_message info "\n${MUTED}Installing ${NC}vibeduel ${MUTED}version: ${NC}$specific_version"
     local tmp_dir="${TMPDIR:-/tmp}/opencode_install_$$"
     mkdir -p "$tmp_dir"
     
@@ -308,8 +308,8 @@ download_and_install() {
         unzip -q "$tmp_dir/$filename" -d "$tmp_dir"
     fi
     
-    mv "$tmp_dir/opencode" "$INSTALL_DIR"
-    chmod 755 "${INSTALL_DIR}/opencode"
+    mv "$tmp_dir/opencode" "$INSTALL_DIR/vibeduel"
+    chmod 755 "${INSTALL_DIR}/vibeduel"
     rm -rf "$tmp_dir"
 }
 
@@ -324,9 +324,9 @@ add_to_path() {
     if grep -Fxq "$command" "$config_file"; then
         print_message info "Command already exists in $config_file, skipping write."
     elif [[ -w $config_file ]]; then
-        echo -e "\n# opencode" >> "$config_file"
+        echo -e "\n# vibeduel" >> "$config_file"
         echo "$command" >> "$config_file"
-        print_message info "${MUTED}Successfully added ${NC}opencode ${MUTED}to \$PATH in ${NC}$config_file"
+        print_message info "${MUTED}Successfully added ${NC}vibeduel ${MUTED}to \$PATH in ${NC}$config_file"
     else
         print_message warning "Manually add the directory to $config_file (or similar):"
         print_message info "  $command"
@@ -411,7 +411,7 @@ echo -e ""
 echo -e "${MUTED}Free AI coding assistant. To start:${NC}"
 echo -e ""
 echo -e "cd <project>  ${MUTED}# Open directory${NC}"
-echo -e "opencode      ${MUTED}# Run command${NC}"
+echo -e "vibeduel      ${MUTED}# Run command${NC}"
 echo -e ""
 echo -e "${MUTED}For more information visit ${NC}https://vibeduel.ai"
 echo -e ""
