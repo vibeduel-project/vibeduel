@@ -494,24 +494,6 @@ export function Session() {
           justifyContent="space-between"
         >
           <box flexDirection="row" gap={1} alignItems="center">
-            <Show when={isSplit()}>
-              <box
-                border={["left", "right", "top", "bottom"]}
-                borderColor={controlSide() === "left" ? theme.success : theme.border}
-                paddingLeft={1}
-                paddingRight={1}
-              >
-                <text fg={controlSide() === "left" ? theme.success : theme.text}>left</text>
-              </box>
-              <box
-                border={["left", "right", "top", "bottom"]}
-                borderColor={controlSide() === "right" ? theme.success : theme.border}
-                paddingLeft={1}
-                paddingRight={1}
-              >
-                <text fg={controlSide() === "right" ? theme.success : theme.text}>right</text>
-              </box>
-            </Show>
           </box>
           <box flexDirection="column" alignItems="flex-end">
             <box flexDirection="row" gap={2} alignItems="center">
@@ -549,7 +531,8 @@ export function Session() {
             <box flexShrink={0} justifyContent="center" alignItems="center" paddingLeft={2} paddingRight={2} paddingBottom={1}>
               <box width="100%" maxWidth={promptMaxWidth()}>
                 <Show when={promptDisabled()}>
-                  <box flexDirection="row" justifyContent="center" gap={1} paddingBottom={1}>
+                  <box flexDirection="column" alignItems="center" paddingBottom={1} gap={0}>
+                  <box flexDirection="row" justifyContent="center" gap={1}>
                     <box
                       border={["left", "right", "top", "bottom"]}
                       borderColor={leftColor() ?? theme.border}
@@ -596,6 +579,7 @@ export function Session() {
                     >
                       <text fg={rightColor() ?? theme.text}>Right</text>
                     </box>
+                  </box>
                     <text fg={theme.textMuted}>click to vote</text>
                   </box>
                 </Show>

@@ -576,7 +576,6 @@ export function Prompt(props: PromptProps) {
       return
     }
 
-    toast.show({ message: `Debug: Submitting... Broadcast=${props.broadcastSessionIDs?.length ?? 0}`, variant: "info" })
     const trimmed = store.prompt.input.trim()
     if (trimmed === "exit" || trimmed === "quit" || trimmed === ":q") {
       exit()
