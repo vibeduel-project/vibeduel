@@ -2,6 +2,8 @@
 
 A community-driven AI coding assistant for your terminal. Fork of [OpenCode](https://github.com/anomalyco/opencode), powered by VibeDuel — giving you access to the best LLMs for free.
 
+![VibeDuel demo](demo.gif)
+
 ## Install
 
 ```bash
