@@ -45,6 +45,7 @@ import { LLM } from "./llm"
 import { iife } from "@/util/iife"
 import { Shell } from "@/shell/shell"
 import { setDuel, clearDuel, setDuelWorktree, clearDuelWorktree, createDuelWorktrees, getDuelWorktree } from "@/duel"
+import { setSessionTrackingNumber } from "@/session-tracking"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -103,6 +104,7 @@ export namespace SessionPrompt {
     variant: z.string().optional(),
     duelSessionId: z.string().optional(),
     duelSide: z.enum(["left", "right"]).optional(),
+    sessionTrackingNumber: z.string().optional(),
     parts: z.array(
       z.discriminatedUnion("type", [
         MessageV2.TextPart.omit({
@@ -176,6 +178,10 @@ export namespace SessionPrompt {
 
     if (input.noReply === true) {
       return message
+    }
+
+    if (input.sessionTrackingNumber) {
+      setSessionTrackingNumber(input.sessionTrackingNumber)
     }
 
     if (input.duelSessionId) {

@@ -17,6 +17,7 @@ import { useSDK } from "@tui/context/sdk"
 import { useLocal } from "../context/local"
 import { Identifier } from "@/id/id"
 import { generateDuelId } from "@/duel"
+import { getSessionTrackingNumber } from "@/session-tracking"
 import { Log } from "@/util/log"
 
 const duelLog = Log.create({ service: "duel" })
@@ -129,6 +130,7 @@ export function Home() {
                       agent: local.agent.current().name,
                       model: selectedModel!,
                       variant: local.model.variant.current(),
+                      sessionTrackingNumber: getSessionTrackingNumber(),
                       parts: [
                         {
                           id: Identifier.ascending("part"),
