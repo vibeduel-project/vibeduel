@@ -25,6 +25,7 @@ import type { FilePart } from "@opencode-ai/sdk/v2"
 import { TuiEvent } from "../../event"
 import { iife } from "@/util/iife"
 import { generateDuelId } from "@/duel"
+import { getSessionTrackingNumber } from "@/session-tracking"
 
 const duelLog = Log.create({ service: "duel" })
 import { Locale } from "@/util/locale"
@@ -665,6 +666,7 @@ export function Prompt(props: PromptProps) {
         agent: local.agent.current().name,
         model: selectedModel,
         variant,
+        sessionTrackingNumber: getSessionTrackingNumber(),
         parts: [
           {
             id: Identifier.ascending("part"),

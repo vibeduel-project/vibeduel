@@ -56,6 +56,7 @@ function logToSide(side: "left" | "right", text: string) {
   duelLog.info(text, { side })
 }
 import { applyWinnerWorktree } from "@/duel"
+import { setSessionTrackingNumber, getSessionTrackingNumber } from "@/session-tracking"
 import { TodoItem } from "../../component/todo-item"
 import { DialogMessage } from "./dialog-message"
 import type { PromptInfo } from "../../component/prompt/history"
@@ -634,6 +635,7 @@ export function Session() {
                           agent: local.agent.current().name,
                           model: local.model.current()!,
                           variant: local.model.variant.current(),
+                          sessionTrackingNumber: getSessionTrackingNumber(),
                           parts,
                           duelSessionId,
                         }

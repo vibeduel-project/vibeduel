@@ -13,6 +13,7 @@ import { Env } from "../env"
 import { Instance } from "../project/instance"
 import { Flag } from "../flag/flag"
 import { iife } from "@/util/iife"
+import { getSessionTrackingNumber } from "@/session-tracking"
 
 // Direct imports for bundled providers
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock"
@@ -1053,11 +1054,17 @@ export namespace Provider {
         const duelId = headers?.["x-duel-session-id"]
         if (opts.body && typeof opts.body === "string" && url.includes("/chat/completions")) {
           const body = JSON.parse(opts.body)
+
+          // Add session tracking number to every chat completion request
+          const trackingNumber = getSessionTrackingNumber()
+          if (trackingNumber) {
+            body.session_tracking_number = trackingNumber
+          }
+
           if (duelId) {
             const originalModel = body.model
             body.model = "duel"
             body.session_id = duelId
-            opts.body = JSON.stringify(body)
             log.info("Duel fetch rewrite", { duelId, originalModel, url })
           } else if (body.model === "duel") {
             // Non-duel request (title gen, summary, etc.) using the "duel" model name - swap to a real model
@@ -1075,10 +1082,15 @@ export namespace Provider {
               allHeaderKeys: headers ? Object.keys(headers) : [],
             })
             body.model = "MiniMaxAI/MiniMax-M2"
-            opts.body = JSON.stringify(body)
           } else {
             log.info("Normal fetch (no duel rewrite)", { model: body.model, url })
           }
+
+          // Log all request params except messages and tools
+          const { messages: _m, tools: _t, ...logParams } = body
+          log.info("outbound chat/completions params", logParams)
+
+          opts.body = JSON.stringify(body)
         }
 
         const response = await fetchFn(input, {
