@@ -556,6 +556,7 @@ export function Prompt(props: PromptProps) {
 
   async function submit() {
     Log.Default.debug("Prompt.submit called", {
+      submitTimestamp: Date.now(),
       disabled: props.disabled,
       autocompleteVisible: autocomplete?.visible,
       inputLength: store.prompt.input.length,
@@ -683,7 +684,7 @@ export function Prompt(props: PromptProps) {
       if (props.skipAutoSend) {
         duelLog.info("prompt: skipAutoSend=true, deferring send to onSubmit", { sessionID, duelId })
       } else if (props.compareMode) {
-        duelLog.info("prompt: sending to primary session", { sessionID, duelId })
+        duelLog.info("duel left request sent", { sessionID, duelId, ts: Date.now() })
         sdk.client.session.prompt({
           sessionID,
           messageID,
@@ -692,17 +693,19 @@ export function Prompt(props: PromptProps) {
           duelSide: "left" as const,
         })
       } else {
+        Log.Default.info("latency: before SDK call", { timestamp: Date.now(), sessionID })
         sdk.client.session.prompt({
           sessionID,
           messageID,
           ...payloadProto,
         })
+        Log.Default.info("latency: after SDK call", { timestamp: Date.now(), sessionID })
       }
 
       if (props.broadcastSessionIDs && !props.skipAutoSend) {
         if (props.compareMode) {
           for (const targetID of props.broadcastSessionIDs) {
-            duelLog.info("prompt: broadcasting to session", { targetID, duelId })
+            duelLog.info("duel right request sent", { targetID, duelId, ts: Date.now() })
             sdk.client.session.prompt({
               sessionID: targetID,
               messageID: Identifier.ascending("message"),

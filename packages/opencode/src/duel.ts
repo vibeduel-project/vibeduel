@@ -76,6 +76,7 @@ async function doCreateWorktrees(duelId: string, repoPath: string, left: string,
 
   // Clean up stale worktrees from previous app runs
   const baseDir = `/tmp/opencode-duel-${duelId}`
+  log.info("wt_latency: before stale cleanup check", { ts: Date.now(), duelId })
   if (await $`test -d ${baseDir}`.quiet().nothrow().then(r => r.exitCode === 0)) {
     log.info("createDuelWorktrees: cleaning up stale worktrees", { duelId, baseDir })
     await $`git worktree remove ${left} --force`.cwd(repoPath).quiet().nothrow()
@@ -83,19 +84,29 @@ async function doCreateWorktrees(duelId: string, repoPath: string, left: string,
     await $`rm -rf ${baseDir}`.quiet().nothrow()
     await $`git worktree prune`.cwd(repoPath).quiet().nothrow()
   }
+  log.info("wt_latency: after stale cleanup", { ts: Date.now(), duelId })
 
   // Log source directory contents before cloning
-  const sourceDump = await $`find ${repoPath} -maxdepth 2 -type f -not -path '*/\.git/*' -exec sh -c 'echo "=== {} ===" && cat "{}"' \;`.cwd(repoPath).quiet().text()
-  log.info("createDuelWorktrees: source directory contents", { duelId, repoPath, dump: sourceDump.trim() })
+  // Commented out: adds ~80-100ms latency per dump
+  // log.info("wt_latency: before source dump", { ts: Date.now(), duelId })
+  // const sourceDump = await $`find ${repoPath} -maxdepth 2 -type f -not -path '*/\.git/*' -exec sh -c 'echo "=== {} ===" && cat "{}"' \;`.cwd(repoPath).quiet().text()
+  // log.info("wt_latency: after source dump", { ts: Date.now(), duelId })
+  // log.info("createDuelWorktrees: source directory contents", { duelId, repoPath, dump: sourceDump.trim() })
 
   // Create worktrees from HEAD, then overlay only uncommitted/modified files
   // so worktrees match what's on disk without copying the entire directory
-  await $`git worktree add ${left} HEAD --detach`.cwd(repoPath).quiet()
-  await $`git worktree add ${right} HEAD --detach`.cwd(repoPath).quiet()
+  log.info("wt_latency: before git worktree add both", { ts: Date.now(), duelId })
+  await Promise.all([
+    $`git worktree add ${left} HEAD --detach`.cwd(repoPath).quiet(),
+    $`git worktree add ${right} HEAD --detach`.cwd(repoPath).quiet(),
+  ])
+  log.info("wt_latency: after git worktree add both", { ts: Date.now(), duelId })
 
   // Get list of files that differ from HEAD (modified, untracked, deleted)
+  log.info("wt_latency: before git diff", { ts: Date.now(), duelId })
   const modifiedRaw = await $`git diff --name-only HEAD`.cwd(repoPath).quiet().text()
   const untrackedRaw = await $`git ls-files --others --exclude-standard`.cwd(repoPath).quiet().text()
+  log.info("wt_latency: after git diff", { ts: Date.now(), duelId })
   const dirtyFiles = [...new Set([
     ...modifiedRaw.trim().split("\n"),
     ...untrackedRaw.trim().split("\n"),
@@ -103,6 +114,7 @@ async function doCreateWorktrees(duelId: string, repoPath: string, left: string,
 
   log.info("createDuelWorktrees: overlaying dirty files", { duelId, count: dirtyFiles.length, files: dirtyFiles })
 
+  log.info("wt_latency: before file overlay loop", { ts: Date.now(), duelId })
   for (const file of dirtyFiles) {
     const srcPath = `${repoPath}/${file}`
     const srcExists = await Bun.file(srcPath).exists()
@@ -118,12 +130,18 @@ async function doCreateWorktrees(duelId: string, repoPath: string, left: string,
       await $`rm -f ${right}/${file}`.quiet().nothrow()
     }
   }
+  log.info("wt_latency: after file overlay loop", { ts: Date.now(), duelId })
 
-  const leftDump = await $`find ${left} -maxdepth 2 -type f -not -path '*/\.git/*' -exec sh -c 'echo "=== {} ===" && cat "{}"' \;`.quiet().text()
-  log.info("createDuelWorktrees: left worktree created", { duelId, left, dirtyCount: dirtyFiles.length, dump: leftDump.trim() })
+  // Commented out: adds ~20-200ms latency per dump depending on repo size
+  // log.info("wt_latency: before left dump", { ts: Date.now(), duelId })
+  // const leftDump = await $`find ${left} -maxdepth 2 -type f -not -path '*/\.git/*' -exec sh -c 'echo "=== {} ===" && cat "{}"' \;`.quiet().text()
+  // log.info("wt_latency: after left dump", { ts: Date.now(), duelId })
+  // log.info("createDuelWorktrees: left worktree created", { duelId, left, dirtyCount: dirtyFiles.length, dump: leftDump.trim() })
 
-  const rightDump = await $`find ${right} -maxdepth 2 -type f -not -path '*/\.git/*' -exec sh -c 'echo "=== {} ===" && cat "{}"' \;`.quiet().text()
-  log.info("createDuelWorktrees: right worktree created", { duelId, right, dirtyCount: dirtyFiles.length, dump: rightDump.trim() })
+  // log.info("wt_latency: before right dump", { ts: Date.now(), duelId })
+  // const rightDump = await $`find ${right} -maxdepth 2 -type f -not -path '*/\.git/*' -exec sh -c 'echo "=== {} ===" && cat "{}"' \;`.quiet().text()
+  // log.info("wt_latency: after right dump", { ts: Date.now(), duelId })
+  // log.info("createDuelWorktrees: right worktree created", { duelId, right, dirtyCount: dirtyFiles.length, dump: rightDump.trim() })
 
   createdWorktrees.add(duelId)
   return { left, right }

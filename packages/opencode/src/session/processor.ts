@@ -55,6 +55,8 @@ export namespace SessionProcessor {
               log.info("injecting duel session", { sessionID: input.sessionID, duelSessionId })
               streamInput.duelSessionId = duelSessionId
             }
+            const streamStartTime = Date.now()
+            let ttftLogged = false
             const stream = await LLM.stream(streamInput)
 
             for await (const value of stream.fullStream) {
@@ -65,6 +67,18 @@ export namespace SessionProcessor {
                   break
 
                 case "reasoning-start":
+                  if (!ttftLogged) {
+                    ttftLogged = true
+                    log.info("TTFT", {
+                      sessionID: input.sessionID,
+                      modelID: input.model.id,
+                      ttftMs: Date.now() - streamStartTime,
+                      streamStartTimestamp: streamStartTime,
+                      firstTokenTimestamp: Date.now(),
+                      type: "reasoning",
+                      duel: !!duelSessionId,
+                    })
+                  }
                   if (value.id in reasoningMap) {
                     continue
                   }
@@ -306,6 +320,18 @@ export namespace SessionProcessor {
                   break
 
                 case "text-delta":
+                  if (!ttftLogged) {
+                    ttftLogged = true
+                    log.info("TTFT", {
+                      sessionID: input.sessionID,
+                      modelID: input.model.id,
+                      ttftMs: Date.now() - streamStartTime,
+                      streamStartTimestamp: streamStartTime,
+                      firstTokenTimestamp: Date.now(),
+                      type: "text",
+                      duel: !!duelSessionId,
+                    })
+                  }
                   if (currentText) {
                     currentText.text += value.text
                     if (value.providerMetadata) currentText.metadata = value.providerMetadata

@@ -153,11 +153,14 @@ export namespace SessionPrompt {
   export type PromptInput = z.infer<typeof PromptInput>
 
   export const prompt = fn(PromptInput, async (input) => {
+    log.info("latency: before prompt processing", { timestamp: Date.now(), sessionID: input.sessionID })
     const session = await Session.get(input.sessionID)
     await SessionRevert.cleanup(session)
 
+    log.info("latency: before message creation", { timestamp: Date.now(), sessionID: input.sessionID })
     const message = await createUserMessage(input)
     await Session.touch(input.sessionID)
+    log.info("latency: after message creation", { timestamp: Date.now(), sessionID: input.sessionID })
 
     // this is backwards compatibility for allowing `tools` to be specified when
     // prompting
@@ -189,13 +192,17 @@ export namespace SessionPrompt {
       setDuel(input.sessionID, input.duelSessionId)
 
       if (input.duelSide) {
+        log.info("latency: before createDuelWorktrees", { timestamp: Date.now(), sessionID: input.sessionID })
         const worktrees = await createDuelWorktrees(input.duelSessionId, Instance.directory)
+        log.info("latency: after createDuelWorktrees", { timestamp: Date.now(), sessionID: input.sessionID })
         const worktreePath = worktrees[input.duelSide]
+        log.info("latency: after worktreePath lookup", { timestamp: Date.now(), sessionID: input.sessionID })
         setDuelWorktree(input.sessionID, worktreePath)
-        log.info("duel worktree assigned", { sessionID: input.sessionID, side: input.duelSide, worktreePath })
+        log.info("latency: after setDuelWorktree", { timestamp: Date.now(), sessionID: input.sessionID })
       }
     }
 
+    log.info("latency: after prompt processing", { timestamp: Date.now(), sessionID: input.sessionID })
     try {
       return await loop(input.sessionID)
     } finally {
