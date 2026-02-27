@@ -422,6 +422,7 @@ export function Session() {
     if (!isSplit()) return
     if (model?.modelID === "duel") return
     duelLog.info("model switched away from duel, exiting split", { modelID: model?.modelID ?? "none" })
+    setAutoDuelDone(false)
     exitDuel()
   })
 
@@ -483,28 +484,6 @@ export function Session() {
       }}
     >
       <box flexDirection="column">
-        <box
-          flexDirection="row"
-          height={3}
-          border={["bottom"]}
-          borderColor={theme.border}
-          paddingLeft={1}
-          paddingRight={1}
-          alignItems="center"
-          gap={1}
-          justifyContent="space-between"
-        >
-          <box flexDirection="row" gap={1} alignItems="center">
-          </box>
-          <box flexDirection="column" alignItems="flex-end">
-            <box flexDirection="row" gap={2} alignItems="center">
-              <text fg={theme.textMuted} wrapMode="none">
-                {tokenContext() ?? "—"}
-              </text>
-              <text fg={theme.textMuted} wrapMode="none">Credits: {credits() !== null ? credits() : "—"}</text>
-            </box>
-          </box>
-        </box>
         <box flexDirection="column" flexGrow={1}>
           <box flexDirection="row" flexGrow={1}>
             <SessionPane
@@ -684,6 +663,10 @@ export function Session() {
               </box>
             </box>
           </Show>
+          <box position="absolute" bottom={0} right={1} flexDirection="row" gap={2}>
+            <text fg={theme.textMuted} wrapMode="none">{tokenContext() ?? "—"}</text>
+            <text fg={theme.textMuted} wrapMode="none">Credits: {credits() !== null ? `${credits()}/250` : "—"}</text>
+          </box>
         </box>
       </box>
     </context.Provider>

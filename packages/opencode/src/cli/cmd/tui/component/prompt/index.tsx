@@ -62,6 +62,9 @@ export type PromptRef = {
   submit(): void
 }
 
+// Remember the last single model so shift+tab can toggle back from duel
+let lastSingleModel: { providerID: string; modelID: string } | undefined
+
 const PLACEHOLDERS = ["Fix a TODO in the codebase", "What is the tech stack of this project?", "Fix broken tests"]
 
 const TEXTAREA_ACTIONS = [
@@ -994,6 +997,22 @@ export function Prompt(props: PromptProps) {
                   e.preventDefault()
                   return
                 }
+                // Shift+Tab: toggle between duel and single model mode
+                if (e.shift && e.name === "tab") {
+                  e.preventDefault()
+                  const current = local.model.current()
+                  if (current?.modelID === "duel") {
+                    if (lastSingleModel) {
+                      duelLog.info("shift+tab: switching to single mode", { model: lastSingleModel })
+                      local.model.set(lastSingleModel)
+                    }
+                  } else {
+                    if (current) lastSingleModel = { providerID: current.providerID, modelID: current.modelID }
+                    duelLog.info("shift+tab: switching to duel mode", { from: current })
+                    local.model.set({ providerID: "vibeduel", modelID: "duel" })
+                  }
+                  return
+                }
                 // Handle clipboard paste (Ctrl+V) - check for images first on Windows
                 // This is needed because Windows terminal doesn't properly send image data
                 // through bracketed paste, so we need to intercept the keypress and
@@ -1285,7 +1304,7 @@ export function Prompt(props: PromptProps) {
               <Switch>
                 <Match when={store.mode === "normal"}>
                   <text fg={theme.text}>
-                    {keybind.print("agent_cycle")} <span style={{ fg: theme.textMuted }}>switch agent</span>
+                    shift+tab <span style={{ fg: theme.textMuted }}>toggle duel</span>
                   </text>
                   <text fg={theme.text}>
                     {keybind.print("command_list")} <span style={{ fg: theme.textMuted }}>commands</span>
