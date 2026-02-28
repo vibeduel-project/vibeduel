@@ -1662,7 +1662,10 @@ export namespace Server {
           const providers = await Provider.list().then((x) => mapValues(x, (item) => item))
           return c.json({
             providers: Object.values(providers),
-            default: mapValues(providers, (item) => Provider.sort(Object.values(item.models))[0].id),
+            default: mapValues(providers, (item) => {
+              if (item.id === "vibeduel" && item.models["duel"]) return "duel"
+              return Provider.sort(Object.values(item.models))[0].id
+            }),
           })
         },
       )

@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MUTED='\033[0;2m'
+RED='\033[0;31m'
+ORANGE='\033[38;5;214m'
+NC='\033[0m'
+
+usage() {
+    cat <<EOF
+VibeDuel Uninstaller
+
+Usage: uninstall [options]
+
+Options:
+    -h, --help    Display this help message
+    -y, --yes     Skip confirmation prompt
+    -q, --quiet   Minimal output
+
+Examples:
+    curl -fsSL https://vibeduel.ai/uninstall | bash
+    curl -fsSL https://vibeduel.ai/uninstall | bash -s -- --yes
+EOF
+}
+
+auto_yes=false
+quiet=false
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -y|--yes)
+            auto_yes=true
+            shift
+            ;;
+        -q|--quiet)
+            quiet=true
+            shift
+            ;;
+        *)
+            echo -e "${ORANGE}Warning: Unknown option '$1'${NC}" >&2
+            shift
+            ;;
+    esac
+done
+
+print_message() {
+    local level=$1
+    local message=$2
+    [[ "$quiet" == "true" && "$level" != "error" ]] && return
+    local color=""
+    case $level in
+        info) color="${NC}" ;;
+        warning) color="${ORANGE}" ;;
+        error) color="${RED}" ;;
+    esac
+    echo -e "${color}${message}${NC}"
+}
+
+INSTALL_DIR="$HOME/.local/bin"
+DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/vibeduel"
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/vibeduel"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/vibeduel"
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/vibeduel"
+
+found_something=false
+
+print_message info "\n${MUTED}The following will be removed:${NC}\n"
+
+if [[ -f "$INSTALL_DIR/vibeduel" ]]; then
+    print_message info "  ${NC}Binary${MUTED}         $INSTALL_DIR/vibeduel${NC}"
+    found_something=true
+fi
+
+for dir_label_pair in "Data:$DATA_DIR" "Cache:$CACHE_DIR" "Config:$CONFIG_DIR" "State:$STATE_DIR"; do
+    label="${dir_label_pair%%:*}"
+    dir="${dir_label_pair#*:}"
+    if [[ -d "$dir" ]]; then
+        printf -v padded "%-14s" "$label"
+        print_message info "  ${NC}${padded}${MUTED}${dir}${NC}"
+        found_something=true
+    fi
+done
+
+declare -a shell_configs_to_clean
+shell_configs_to_clean=()
+for config_file in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.config/fish/config.fish"; do
+    if [[ -f "$config_file" ]] && grep -q "# vibeduel" "$config_file" 2>/dev/null; then
+        shell_configs_to_clean+=("$config_file")
+        printf -v padded "%-14s" "PATH entry"
+        print_message info "  ${NC}${padded}${MUTED}${config_file}${NC}"
+        found_something=true
+    fi
+done
+
+# Also check for old install location
+OLD_DIR="$HOME/.vibeduel"
+if [[ -d "$OLD_DIR" ]]; then
+    printf -v padded "%-14s" "Legacy"
+    print_message info "  ${NC}${padded}${MUTED}${OLD_DIR}${NC}"
+    found_something=true
+fi
+
+if [[ "$found_something" == "false" ]]; then
+    print_message info "${MUTED}Nothing to uninstall — VibeDuel is not installed.${NC}\n"
+    exit 0
+fi
+
+echo ""
+
+if [[ "$auto_yes" == "false" ]]; then
+    printf "${ORANGE}Proceed with uninstall? [y/N] ${NC}"
+    read -r reply
+    if [[ "$reply" != "y" && "$reply" != "Y" ]]; then
+        print_message info "${MUTED}Aborted.${NC}"
+        exit 0
+    fi
+fi
+
+echo ""
+
+# Remove binary
+if [[ -f "$INSTALL_DIR/vibeduel" ]]; then
+    rm -f "$INSTALL_DIR/vibeduel"
+    print_message info "${MUTED}Removed ${NC}$INSTALL_DIR/vibeduel"
+fi
+
+# Remove data directories
+for dir in "$DATA_DIR" "$CACHE_DIR" "$CONFIG_DIR" "$STATE_DIR"; do
+    if [[ -d "$dir" ]]; then
+        rm -rf "$dir"
+        print_message info "${MUTED}Removed ${NC}$dir"
+    fi
+done
+
+# Remove legacy install location
+if [[ -d "$OLD_DIR" ]]; then
+    rm -rf "$OLD_DIR"
+    print_message info "${MUTED}Removed ${NC}$OLD_DIR"
+fi
+
+# Clean shell config files
+for config_file in "${shell_configs_to_clean[@]+"${shell_configs_to_clean[@]}"}"; do
+    sed -i.bak \
+        -e '/^[[:space:]]*# vibeduel[[:space:]]*$/d' \
+        -e '/^[[:space:]]*export[[:space:]]*PATH=.*\.local\/bin/d' \
+        -e '/^[[:space:]]*fish_add_path.*\.local\/bin/d' \
+        "$config_file"
+    rm -f "${config_file}.bak"
+    print_message info "${MUTED}Cleaned PATH entry from ${NC}$config_file"
+done
+
+echo ""
+print_message info "${MUTED}VibeDuel has been uninstalled.${NC}"
+echo ""

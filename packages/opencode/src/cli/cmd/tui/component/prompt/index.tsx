@@ -1002,9 +1002,20 @@ export function Prompt(props: PromptProps) {
                   e.preventDefault()
                   const current = local.model.current()
                   if (current?.modelID === "duel") {
-                    if (lastSingleModel) {
-                      duelLog.info("shift+tab: switching to single mode", { model: lastSingleModel })
-                      local.model.set(lastSingleModel)
+                    const target = lastSingleModel ?? (() => {
+                      const provider = sync.data.provider.find((p) =>
+                        Object.keys(p.models).some((id) => id !== "duel"),
+                      )
+                      if (!provider) return undefined
+                      const defaultModel = sync.data.provider_default[provider.id]
+                      const modelID = (defaultModel && defaultModel !== "duel" ? defaultModel : undefined)
+                        ?? Object.keys(provider.models).find((id) => id !== "duel")
+                      if (!modelID) return undefined
+                      return { providerID: provider.id, modelID }
+                    })()
+                    if (target) {
+                      duelLog.info("shift+tab: switching to single mode", { model: target })
+                      local.model.set(target)
                     }
                   } else {
                     if (current) lastSingleModel = { providerID: current.providerID, modelID: current.modelID }
