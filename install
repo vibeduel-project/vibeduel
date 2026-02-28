@@ -198,7 +198,11 @@ migrate_from_old_location() {
     # Clean up old PATH entries from shell configs
     for config_file in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.config/fish/config.fish"; do
         if [[ -f "$config_file" ]]; then
-            sed -i.bak "/\.vibeduel\/bin/d" "$config_file"
+            sed -i.bak \
+                -e '/^[[:space:]]*# vibeduel[[:space:]]*$/d' \
+                -e '/^[[:space:]]*export[[:space:]]*PATH=.*\.vibeduel\/bin/d' \
+                -e '/^[[:space:]]*set[[:space:]]*-x[[:space:]]*PATH.*\.vibeduel\/bin/d' \
+                "$config_file"
             rm -f "${config_file}.bak"
         fi
     done
