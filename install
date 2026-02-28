@@ -397,13 +397,16 @@ add_to_path() {
 
     if grep -Fxq "$command" "$config_file"; then
         print_message info "Command already exists in $config_file, skipping write."
+        return 1
     elif [[ -w $config_file ]]; then
         echo -e "\n# vibeduel" >> "$config_file"
         echo "$command" >> "$config_file"
         print_message info "${MUTED}Successfully added ${NC}vibeduel ${MUTED}to \$PATH in ${NC}$config_file"
+        return 0
     else
         print_message warning "Manually add the directory to $config_file (or similar):"
         print_message info "  $command"
+        return 1
     fi
 }
 
