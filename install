@@ -183,6 +183,29 @@ print_message() {
     echo -e "${color}${message}${NC}"
 }
 
+migrate_from_old_location() {
+    local old_install_dir="$HOME/.vibeduel/bin"
+    
+    [[ ! -f "$old_install_dir/vibeduel" ]] && return
+    
+    print_message info "${MUTED}Migrating from ${NC}$old_install_dir${MUTED} to ${NC}$INSTALL_DIR"
+    
+    # Remove old binary
+    rm -f "$old_install_dir/vibeduel"
+    rmdir "$old_install_dir" 2>/dev/null || true
+    rmdir "$HOME/.vibeduel" 2>/dev/null || true
+    
+    # Clean up old PATH entries from shell configs
+    for config_file in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.config/fish/config.fish"; do
+        if [[ -f "$config_file" ]]; then
+            sed -i.bak "/\.vibeduel\/bin/d" "$config_file"
+            rm -f "${config_file}.bak"
+        fi
+    done
+    
+    print_message info "${MUTED}Cleaned up old installation${NC}"
+}
+
 check_version() {
     [[ ! -f "$INSTALL_DIR/vibeduel" ]] && return
     
@@ -355,6 +378,7 @@ download_and_install() {
     fi
 }
 
+migrate_from_old_location
 check_version
 download_and_install
 
