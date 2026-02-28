@@ -184,22 +184,23 @@ print_message() {
 }
 
 check_version() {
-    if command -v vibeduel >/dev/null 2>&1; then
-        vibeduel_path=$(which vibeduel)
-
-
-        ## TODO: check if version is installed
-        # installed_version=$(opencode version)
-        installed_version="0.0.1"
-        installed_version=$(echo $installed_version | awk '{print $2}')
-
-        if [[ "$installed_version" != "$specific_version" ]]; then
-            print_message info "${MUTED}Installed version: ${NC}$installed_version."
-        else
-            print_message info "${MUTED}Version ${NC}$specific_version${MUTED} already installed"
-            exit 0
-        fi
+    [[ ! -f "$INSTALL_DIR/vibeduel" ]] && return
+    
+    installed_version=$("$INSTALL_DIR/vibeduel" --version 2>/dev/null) || {
+        print_message warning "${MUTED}Could not determine installed version, reinstalling${NC}"
+        return
+    }
+    
+    # Compare timestamps (YYYYMMDDHHMM format)
+    installed_ts="${installed_version##*-}"
+    requested_ts="${specific_version##*-}"
+    
+    if [[ "$installed_ts" -ge "$requested_ts" ]]; then
+        print_message info "${MUTED}Version ${NC}$installed_version${MUTED} already installed${NC}"
+        exit 0
     fi
+    
+    print_message info "${MUTED}Installed: ${NC}$installed_version${MUTED}, upgrading to ${NC}$specific_version"
 }
 
 unbuffered_sed() {
