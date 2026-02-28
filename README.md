@@ -34,3 +34,8 @@ Each request costs **1 credit**.
 ### Use duel mode
 Press `shift+tab` or pick `duel` in the model picker. You can switch to duel mode at any time. 
 Each vote gives **50 credits** and goes to the leaderboard.
+
+## Uninstall
+```bash
+curl -fsSL https://vibeduel.ai/uninstall | bash
+```
