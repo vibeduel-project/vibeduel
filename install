@@ -418,38 +418,48 @@ if [[ "$no_modify_path" != "true" ]]; then
 
         # Check and add to bashrc (prioritize over bash_profile)
         if [[ -f "$HOME/.bashrc" ]]; then
-            add_to_path "$HOME/.bashrc" "export PATH=$INSTALL_DIR:\$PATH"
-            modified_files+=("$HOME/.bashrc")
+            if add_to_path "$HOME/.bashrc" "export PATH=$INSTALL_DIR:\$PATH"; then
+                modified_files+=("$HOME/.bashrc")
+            fi
         fi
 
         # Check and add to zshrc
         if [[ -f "$HOME/.zshrc" ]]; then
-            add_to_path "$HOME/.zshrc" "export PATH=$INSTALL_DIR:\$PATH"
-            modified_files+=("$HOME/.zshrc")
+            if add_to_path "$HOME/.zshrc" "export PATH=$INSTALL_DIR:\$PATH"; then
+                modified_files+=("$HOME/.zshrc")
+            fi
         fi
 
         # Check and add to fish config
         if [[ -f "$HOME/.config/fish/config.fish" ]]; then
-            add_to_path "$HOME/.config/fish/config.fish" "fish_add_path $INSTALL_DIR"
-            modified_files+=("$HOME/.config/fish/config.fish")
+            if add_to_path "$HOME/.config/fish/config.fish" "fish_add_path $INSTALL_DIR"; then
+                modified_files+=("$HOME/.config/fish/config.fish")
+            fi
         fi
-        
-        # Reload shell configuration for current session
-        if [[ ${#modified_files[@]} -gt 0 ]]; then
-            current_shell=$(basename "$SHELL")
-            case $current_shell in
-                bash)
-                    [[ -f "$HOME/.bashrc" ]] && source "$HOME/.bashrc"
-                    ;;
-                zsh)
-                    [[ -f "$HOME/.zshrc" ]] && source "$HOME/.zshrc"
-                    ;;
-                fish)
-                    [[ -f "$HOME/.config/fish/config.fish" ]] && source "$HOME/.config/fish/config.fish"
-                    ;;
-            esac
-        fi
-    fi
+
+         # Reload shell configuration for current session
+         if [[ ${#modified_files[@]} -gt 0 ]]; then
+             current_shell=$(basename "$SHELL")
+             case $current_shell in
+                 bash)
+                     [[ -f "$HOME/.bashrc" ]] && source "$HOME/.bashrc"
+                     ;;
+                 zsh)
+                     [[ -f "$HOME/.zshrc" ]] && source "$HOME/.zshrc"
+                     ;;
+                 fish)
+                     if command -v fish >/dev/null 2>&1 && [[ -f "$HOME/.config/fish/config.fish" ]]; then
+                         fish -c "source \"$HOME/.config/fish/config.fish\"" >/dev/null 2>&1 || true
+                     fi
+                     ;;
+             esac
+             print_message info "${MUTED}Shell configuration updated. Changes are active in the install script, but you may need to open a new terminal or run ${NC}source ${MUTED}(~/.bashrc, ~/.zshrc, etc.) to use ${NC}vibeduel ${MUTED}in your current session.${NC}"
+         else
+             print_message warning "Could not find a supported shell config file (.bashrc, .zshrc, or fish config)."
+             print_message warning "Please add ${INSTALL_DIR} to your PATH manually, for example:"
+             echo "  export PATH=\"${INSTALL_DIR}:\$PATH\""
+         fi
+     fi
 fi
 
 if [ -n "${GITHUB_ACTIONS-}" ] && [ "${GITHUB_ACTIONS}" == "true" ]; then
@@ -472,4 +482,3 @@ echo -e ""
 echo -e "${MUTED}For more information visit ${NC}https://vibeduel.ai"
 echo -e ""
 echo -e ""
-
