@@ -33,7 +33,7 @@ export async function requireVibeDuelKey() {
   prompts.intro(UI.Style.TEXT_INFO_BOLD + "VibeDuel API Key required!" + UI.Style.TEXT_NORMAL + " " + UI.Style.TEXT_DIM + `Create a key at: ${VIBEDUEL_KEY_URL}` + UI.Style.TEXT_NORMAL)
 
   const baseURL = process.env.VIBEDUEL_BASE_URL ?? "https://api.vibeduel.ai/v1"
-  const validationURL = `${baseURL}/chat/completions`
+  const validationURL = `${baseURL}/usable_models`
 
   let validKey: string
 
@@ -54,15 +54,10 @@ export async function requireVibeDuelKey() {
 
     try {
       const response = await fetch(validationURL, {
-        method: "POST",
+        method: "GET",
         headers: {
           Authorization: `Bearer ${input.trim()}`,
-          "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          model: "test",
-          messages: [],
-        }),
         signal: AbortSignal.timeout(10000),
       })
 
