@@ -159,7 +159,7 @@ else
     requested_version="${requested_version#v}"
     url="https://github.com/vibeduel-project/vibeduel/releases/download/v${requested_version}/$filename"
     specific_version=$requested_version
-    
+
     # Verify the release exists before downloading
     http_status=$(curl -sI -o /dev/null -w "%{http_code}" "https://github.com/vibeduel-project/vibeduel/releases/tag/v${requested_version}")
     if [ "$http_status" = "404" ]; then
@@ -185,16 +185,16 @@ print_message() {
 
 migrate_from_old_location() {
     local old_install_dir="$HOME/.vibeduel/bin"
-    
+
     [[ ! -f "$old_install_dir/vibeduel" ]] && return
-    
+
     print_message info "${MUTED}Migrating from ${NC}$old_install_dir${MUTED} to ${NC}$INSTALL_DIR"
-    
+
     # Remove old binary
     rm -f "$old_install_dir/vibeduel"
     rmdir "$old_install_dir" 2>/dev/null || true
     rmdir "$HOME/.vibeduel" 2>/dev/null || true
-    
+
     # Clean up old PATH entries from shell configs
     for config_file in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.config/fish/config.fish"; do
         if [[ -f "$config_file" ]]; then
@@ -206,23 +206,23 @@ migrate_from_old_location() {
             rm -f "${config_file}.bak"
         fi
     done
-    
+
     print_message info "${MUTED}Cleaned up old installation${NC}"
 }
 
 check_version() {
      [[ ! -f "$INSTALL_DIR/vibeduel" ]] && return
-     
+
      installed_version=$("$INSTALL_DIR/vibeduel" --version 2>/dev/null) || {
          print_message warning "${MUTED}Could not determine installed version, reinstalling${NC}"
          return
      }
-     
+
      # Compare timestamps (YYYYMMDDHHMM format) if both versions have a numeric timestamp suffix
      if [[ "$installed_version" == *-* && "$specific_version" == *-* ]]; then
          installed_ts="${installed_version##*-}"
          requested_ts="${specific_version##*-}"
-         
+
          if [[ "$installed_ts" =~ ^[0-9]+$ && "$requested_ts" =~ ^[0-9]+$ && ${#installed_ts} -eq ${#requested_ts} ]]; then
              if [[ "$installed_ts" -ge "$requested_ts" ]]; then
                  print_message info "${MUTED}Version ${NC}$installed_version${MUTED} already installed${NC}"
@@ -230,7 +230,7 @@ check_version() {
              fi
          fi
      fi
-     
+
      print_message info "${MUTED}Installed: ${NC}$installed_version${MUTED}, upgrading to ${NC}$specific_version"
 }
 
@@ -300,11 +300,11 @@ download_with_progress() {
     {
         local length=0
         local bytes=0
-        
+
         while IFS=" " read -r -a line; do
             [ "${#line[@]}" -lt 2 ] && continue
             local tag="${line[0]} ${line[1]}"
-            
+
             if [ "$tag" = "0000: content-length:" ]; then
                 length="${line[2]}"
                 length=$(echo "$length" | tr -d '\r')
@@ -332,9 +332,9 @@ download_and_install() {
         print_message error "Failed to create temporary directory: $tmp_dir"
         exit 1
     }
-    
-    trap 'rm -rf "$tmp_dir"' EXIT
-    
+
+    trap 'rm -rf "$tmp_dir"' RETURN
+
     # Download with progress or fallback
     if [[ "$os" == "windows" ]] || ! [ -t 2 ] || ! download_with_progress "$url" "$tmp_dir/$filename"; then
         curl -# -L -o "$tmp_dir/$filename" "$url" || {
@@ -361,7 +361,7 @@ download_and_install() {
             exit 1
         }
     fi
-    
+
     # Validate binary was extracted
     if [[ ! -f "$tmp_dir/opencode" ]]; then
         print_message error "Binary not found in archive (expected: $tmp_dir/opencode)"
@@ -373,12 +373,12 @@ download_and_install() {
         print_message error "Failed to move binary to $INSTALL_DIR"
         exit 1
     }
-    
+
     chmod 755 "${INSTALL_DIR}/vibeduel" || {
         print_message error "Failed to set executable permissions"
         exit 1
     }
-    
+
     # Final validation
     if ! [[ -x "$INSTALL_DIR/vibeduel" ]]; then
         print_message error "Installation validation failed: binary not executable"
@@ -412,19 +412,19 @@ if [[ "$no_modify_path" != "true" ]]; then
         print_message info "${MUTED}$INSTALL_DIR already in \$PATH${NC}"
     else
         modified_files=()
-        
+
         # Check and add to bashrc (prioritize over bash_profile)
         if [[ -f "$HOME/.bashrc" ]]; then
             add_to_path "$HOME/.bashrc" "export PATH=$INSTALL_DIR:\$PATH"
             modified_files+=("$HOME/.bashrc")
         fi
-        
+
         # Check and add to zshrc
         if [[ -f "$HOME/.zshrc" ]]; then
             add_to_path "$HOME/.zshrc" "export PATH=$INSTALL_DIR:\$PATH"
             modified_files+=("$HOME/.zshrc")
         fi
-        
+
         # Check and add to fish config
         if [[ -f "$HOME/.config/fish/config.fish" ]]; then
             add_to_path "$HOME/.config/fish/config.fish" "fish_add_path $INSTALL_DIR"
