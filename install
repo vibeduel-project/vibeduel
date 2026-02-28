@@ -204,12 +204,13 @@ check_version() {
 }
 
 unbuffered_sed() {
+    local pad
     if echo | sed -u -e "" >/dev/null 2>&1; then
         sed -nu "$@"
     elif echo | sed -l -e "" >/dev/null 2>&1; then
         sed -nl "$@"
     else
-        local pad="$(printf "\n%512s" "")"
+        pad="$(printf "\n%512s" "")"
         sed -ne "s/$/\\${pad}/" "$@"
     fi
 }
@@ -219,15 +220,15 @@ print_progress() {
     local length="$2"
     [ "$length" -gt 0 ] || return 0
 
-    local width=50
-    local percent=$(( bytes * 100 / length ))
+    local width=50 percent on off filled empty
+    percent=$(( bytes * 100 / length ))
     [ "$percent" -gt 100 ] && percent=100
-    local on=$(( percent * width / 100 ))
-    local off=$(( width - on ))
+    on=$(( percent * width / 100 ))
+    off=$(( width - on ))
 
-    local filled=$(printf "%*s" "$on" "")
+    filled=$(printf "%*s" "$on" "")
     filled=${filled// /■}
-    local empty=$(printf "%*s" "$off" "")
+    empty=$(printf "%*s" "$off" "")
     empty=${empty// /･}
 
     printf "\r${ORANGE}%s%s %3d%%${NC}" "$filled" "$empty" "$percent" >&4
@@ -253,7 +254,7 @@ download_with_progress() {
     # Hide cursor
     printf "\033[?25l" >&4
 
-    trap "trap - RETURN; rm -f \"$tracefile\"; printf '\033[?25h' >&4; exec 4>&-" RETURN
+    trap 'trap - RETURN; rm -f "$tracefile"; printf "\033[?25h" >&4; exec 4>&-' RETURN
 
     (
         curl --trace-ascii "$tracefile" -s -L -o "$output" "$url"
