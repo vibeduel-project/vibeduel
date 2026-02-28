@@ -294,23 +294,63 @@ download_with_progress() {
 
 download_and_install() {
     print_message info "\n${MUTED}Installing ${NC}vibeduel ${MUTED}version: ${NC}$specific_version"
-    local tmp_dir="${TMPDIR:-/tmp}/opencode_install_$$"
-    mkdir -p "$tmp_dir"
+    local tmp_dir="${TMPDIR:-/tmp}/vibeduel_install_$$"
+    mkdir -p "$tmp_dir" || {
+        print_message error "Failed to create temporary directory: $tmp_dir"
+        exit 1
+    }
     
+    trap 'rm -rf "$tmp_dir"' EXIT
+    
+    # Download with progress or fallback
     if [[ "$os" == "windows" ]] || ! [ -t 2 ] || ! download_with_progress "$url" "$tmp_dir/$filename"; then
-        # Fallback to standard curl on Windows, non-TTY environments, or if custom progress fails
-        curl -# -L -o "$tmp_dir/$filename" "$url"
+        curl -# -L -o "$tmp_dir/$filename" "$url" || {
+            print_message error "Failed to download from $url"
+            exit 1
+        }
     fi
 
+    # Validate download
+    if [[ ! -f "$tmp_dir/$filename" ]]; then
+        print_message error "Download failed: $filename not found"
+        exit 1
+    fi
+
+    # Extract
     if [ "$os" = "linux" ]; then
-        tar -xzf "$tmp_dir/$filename" -C "$tmp_dir"
+        tar -xzf "$tmp_dir/$filename" -C "$tmp_dir" || {
+            print_message error "Failed to extract $filename"
+            exit 1
+        }
     else
-        unzip -q "$tmp_dir/$filename" -d "$tmp_dir"
+        unzip -q "$tmp_dir/$filename" -d "$tmp_dir" || {
+            print_message error "Failed to extract $filename"
+            exit 1
+        }
     fi
     
-    mv "$tmp_dir/opencode" "$INSTALL_DIR/vibeduel"
-    chmod 755 "${INSTALL_DIR}/vibeduel"
-    rm -rf "$tmp_dir"
+    # Validate binary was extracted
+    if [[ ! -f "$tmp_dir/opencode" ]]; then
+        print_message error "Binary not found in archive (expected: $tmp_dir/opencode)"
+        exit 1
+    fi
+
+    # Install with validation
+    mv "$tmp_dir/opencode" "$INSTALL_DIR/vibeduel" || {
+        print_message error "Failed to move binary to $INSTALL_DIR"
+        exit 1
+    }
+    
+    chmod 755 "${INSTALL_DIR}/vibeduel" || {
+        print_message error "Failed to set executable permissions"
+        exit 1
+    }
+    
+    # Final validation
+    if ! [[ -x "$INSTALL_DIR/vibeduel" ]]; then
+        print_message error "Installation validation failed: binary not executable"
+        exit 1
+    fi
 }
 
 check_version
@@ -397,7 +437,7 @@ if [[ "$no_modify_path" != "true" ]]; then
 fi
 
 if [ -n "${GITHUB_ACTIONS-}" ] && [ "${GITHUB_ACTIONS}" == "true" ]; then
-    echo "$INSTALL_DIR" >> $GITHUB_PATH
+    echo "$INSTALL_DIR" >> "$GITHUB_PATH"
     print_message info "Added $INSTALL_DIR to \$GITHUB_PATH"
 fi
 
