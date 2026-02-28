@@ -35,9 +35,9 @@ export async function requireVibeDuelKey() {
   const baseURL = process.env.VIBEDUEL_BASE_URL ?? "https://api.vibeduel.ai/v1"
   const validationURL = `${baseURL}/chat/completions`
 
-  let validKey: string | null = null
+  let validKey: string
 
-  while (!validKey) {
+  while (true) {
     const input = await prompts.password({
       message: "Enter your VIBEDUEL_API_KEY:",
       validate: (x) => (x && x.length > 0 ? undefined : "Required"),
@@ -63,15 +63,17 @@ export async function requireVibeDuelKey() {
           model: "test",
           messages: [],
         }),
+        signal: AbortSignal.timeout(10000),
       })
 
-      if (response.status === 401 || response.status === 403) {
+      if (!response.ok) {
         spinner.stop("Invalid API key", 1)
         continue
       }
 
       spinner.stop("API key validated")
       validKey = input.trim()
+      break
     } catch (error) {
       spinner.stop("Failed to validate API key", 1)
       const errorMsg = error instanceof Error ? error.message : "Unknown error"
