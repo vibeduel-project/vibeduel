@@ -1,6 +1,7 @@
 import { UI } from "@/cli/ui"
 import { Auth } from "@/auth"
 import { execSync } from "child_process"
+import * as prompts from "@clack/prompts"
 
 const VIBEDUEL_KEY_URL = "https://vibeduel.ai/keys"
 
@@ -29,18 +30,54 @@ export async function requireVibeDuelKey() {
     return
   }
 
-  UI.empty()
-  UI.println(UI.Style.TEXT_INFO_BOLD + "VibeDuel API Key Required" + UI.Style.TEXT_NORMAL)
-  UI.println(UI.Style.TEXT_DIM + `Create a key at: ${VIBEDUEL_KEY_URL}` + UI.Style.TEXT_NORMAL)
-  UI.empty()
+  prompts.intro(UI.Style.TEXT_INFO_BOLD + "VibeDuel API Key required!" + UI.Style.TEXT_NORMAL + " " + UI.Style.TEXT_DIM + `Create a key at: ${VIBEDUEL_KEY_URL}` + UI.Style.TEXT_NORMAL)
 
-  const input = await UI.input("Enter your VIBEDUEL_API_KEY: ")
-  if (!input.trim()) {
-    UI.error("API key is required to continue")
-    process.exit(1)
+  const baseURL = process.env.VIBEDUEL_BASE_URL ?? "https://api.vibeduel.ai/v1"
+  const validationURL = `${baseURL}/usable_models`
+
+  let validKey: string
+
+  while (true) {
+    const input = await prompts.password({
+      message: "Enter your VIBEDUEL_API_KEY:",
+      validate: (x) => (x && x.length > 0 ? undefined : "Required"),
+    })
+    if (prompts.isCancel(input)) throw new UI.CancelledError()
+    if (!input.trim()) {
+      prompts.log.error("API key is required to continue")
+      continue
+    }
+
+    // Validate the API key with the server
+    const spinner = prompts.spinner()
+    spinner.start("Validating API key...")
+
+    try {
+      const response = await fetch(validationURL, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${input.trim()}`,
+        },
+        signal: AbortSignal.timeout(10000),
+      })
+
+      if (!response.ok) {
+        spinner.stop("Invalid API key", 1)
+        continue
+      }
+
+      spinner.stop("API key validated")
+      validKey = input.trim()
+      break
+    } catch (error) {
+      spinner.stop("Failed to validate API key", 1)
+      const errorMsg = error instanceof Error ? error.message : "Unknown error"
+      prompts.log.error(`Could not validate API key at ${validationURL}: ${errorMsg}`)
+      prompts.log.error("Please check your network connection or VIBEDUEL_BASE_URL environment variable")
+    }
   }
 
   // Set the API key in process.env for this session
-  process.env.VIBEDUEL_API_KEY = input.trim()
-  await Auth.set("vibeduel", { type: "api", key: input.trim() })
+  process.env.VIBEDUEL_API_KEY = validKey
+  await Auth.set("vibeduel", { type: "api", key: validKey })
 }
