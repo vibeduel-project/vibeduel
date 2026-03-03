@@ -64,8 +64,9 @@ export function Home() {
       setLoading(true)
       setError(null)
 
-      const baseURL = process.env["VIBEDUEL_BASE_URL"] ?? "https://api.vibeduel.ai/v1"
-      const apiKey = process.env["VIBEDUEL_API_KEY"]
+      const bunEnv = typeof Bun !== "undefined" ? (Bun as { env: Record<string, string | undefined> }).env : undefined
+      const baseURL = process.env["VIBEDUEL_BASE_URL"] ?? bunEnv?.VIBEDUEL_BASE_URL ?? "https://api.vibeduel.ai/v1"
+      const apiKey = process.env["VIBEDUEL_API_KEY"] ?? bunEnv?.VIBEDUEL_API_KEY
 
       if (!apiKey) {
         setError("No API key available")
