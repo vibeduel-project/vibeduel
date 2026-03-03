@@ -58,6 +58,7 @@ export function Home() {
   const [stats, setStats] = createSignal<any | null>(null)
   const [loading, setLoading] = createSignal(false)
   const [error, setError] = createSignal<string | null>(null)
+  const [newDuelsDelta, setNewDuelsDelta] = createSignal<number>(0)
 
   const CACHE_KEY = "duel_stats_cache"
   const CACHE_TTL = 24 * 60 * 60 * 1000 // 24 hours
@@ -71,10 +72,17 @@ export function Home() {
       return
     }
 
-    const cached = kv.get(CACHE_KEY) as { leaderboard: any[]; stats: any; timestamp: number } | undefined
+    const cached = kv.get(CACHE_KEY) as
+      | { leaderboard: any[]; stats: any; timestamp: number; prevTotalVotes?: number }
+      | undefined
+    let prevTotalVotes = cached?.prevTotalVotes
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
       setLeaderboard(cached.leaderboard)
       setStats(cached.stats)
+      const currentTotal = cached.stats?.total_votes || 0
+      if (prevTotalVotes !== undefined && prevTotalVotes < currentTotal) {
+        setNewDuelsDelta(currentTotal - prevTotalVotes)
+      }
       return
     }
 
@@ -109,7 +117,18 @@ export function Home() {
       setStats(statsData)
 
       // Cache the results
-      kv.set(CACHE_KEY, { leaderboard: leaderboardData.leaderboard || [], stats: statsData, timestamp: Date.now() })
+      const currentTotal = statsData.total_votes || 0
+      if (prevTotalVotes !== undefined && prevTotalVotes < currentTotal) {
+        setNewDuelsDelta(currentTotal - prevTotalVotes)
+      } else {
+        setNewDuelsDelta(0)
+      }
+      kv.set(CACHE_KEY, {
+        leaderboard: leaderboardData.leaderboard || [],
+        stats: statsData,
+        timestamp: Date.now(),
+        prevTotalVotes: prevTotalVotes ?? currentTotal,
+      })
     } catch (err) {
       console.error("Failed to fetch duel stats:", err)
       setError("Failed to load leaderboard data")
@@ -207,9 +226,14 @@ export function Home() {
                 <text fg={theme.background}>
                   <strong>Leaderboard</strong>
                 </text>
-                <text fg={theme.backgroundElement}>
-                  {loading() ? "loading..." : `from ${stats()?.total_votes || 0} duels`}
-                </text>
+                <box flexDirection="row" gap={1}>
+                  <text fg={theme.backgroundElement}>
+                    {loading() ? "loading..." : `from ${stats()?.total_votes || 0} duels`}
+                  </text>
+                  <Show when={newDuelsDelta() > 0}>
+                    <text fg={theme.background}>(+{newDuelsDelta()} new)</text>
+                  </Show>
+                </box>
               </box>
               <box
                 backgroundColor={theme.backgroundPanel}
