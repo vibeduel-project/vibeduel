@@ -1,5 +1,5 @@
 import { Prompt, type PromptRef } from "@tui/component/prompt"
-import { createMemo, Match, onMount, Show, Switch } from "solid-js"
+import { createMemo, Match, onMount, Show, Switch, createSignal } from "solid-js"
 import { useTheme } from "@tui/context/theme"
 import { Logo } from "../component/logo"
 import { DidYouKnow, randomizeTip } from "../component/did-you-know"
@@ -53,6 +53,56 @@ export function Home() {
     return !tipsHidden()
   })
 
+  // Leaderboard stats
+  const [leaderboard, setLeaderboard] = createSignal<any[] | null>(null)
+  const [stats, setStats] = createSignal<any | null>(null)
+  const [loading, setLoading] = createSignal(false)
+  const [error, setError] = createSignal<string | null>(null)
+
+  async function fetchDuelStats() {
+    try {
+      setLoading(true)
+      setError(null)
+
+      const baseURL = process.env["VIBEDUEL_BASE_URL"] ?? "https://api.vibeduel.ai/v1"
+      const apiKey = process.env["VIBEDUEL_API_KEY"]
+
+      if (!apiKey) {
+        setError("No API key available")
+        return
+      }
+
+      // Fetch both endpoints in parallel
+      const [leaderboardRes, statsRes] = await Promise.all([
+        fetch(`${baseURL}/duel/leaderboard`, {
+          headers: { Authorization: `Bearer ${apiKey}` },
+        }),
+        fetch(`${baseURL}/duel/stats`, {
+          headers: { Authorization: `Bearer ${apiKey}` },
+        }),
+      ])
+
+      if (!leaderboardRes.ok) {
+        setError(`Failed to load leaderboard: ${leaderboardRes.status}`)
+        return
+      }
+      const leaderboardData = await leaderboardRes.json()
+      setLeaderboard(leaderboardData.leaderboard || [])
+
+      if (!statsRes.ok) {
+        setError(`Failed to load stats: ${statsRes.status}`)
+        return
+      }
+      const statsData = await statsRes.json()
+      setStats(statsData)
+    } catch (err) {
+      console.error("Failed to fetch duel stats:", err)
+      setError("Failed to load leaderboard data")
+    } finally {
+      setLoading(false)
+    }
+  }
+
   command.register(() => [
     {
       title: tipsHidden() ? "Show tips" : "Hide tips",
@@ -89,6 +139,7 @@ export function Home() {
   const args = useArgs()
   onMount(() => {
     randomizeTip()
+    fetchDuelStats()
     if (once) return
     if (routeData.initialPrompt) {
       prompt.set(routeData.initialPrompt)
@@ -104,7 +155,119 @@ export function Home() {
   return (
     <>
       <box flexGrow={1} justifyContent="center" alignItems="center" paddingLeft={2} paddingRight={2} gap={1}>
-        <Logo />
+        {/* Side by side layout: Logo on left, Leaderboard on right */}
+        <box flexDirection="row" gap={2} paddingRight={2} alignItems="center" width="100%" maxWidth={90}>
+          {/* Logo - takes about 40% of width */}
+          <box flexGrow={1} flexBasis={50} alignItems="center" justifyContent="center">
+            <Logo />
+          </box>
+
+          {/* Leaderboard Section - takes about 60% of width */}
+          <Show when={!isFirstTimeUser()}>
+            <box
+              flexGrow={1}
+              flexBasis={50}
+              paddingTop={1}
+              paddingBottom={0}
+              paddingRight={1}
+              width={40}
+              justifyContent="center"
+            >
+              <Show when={error()}>
+                <box flexDirection="row" gap={1} alignItems="center">
+                  <text fg={theme.error}>{error()}</text>
+                </box>
+              </Show>
+
+              <box
+                backgroundColor={theme.textMuted}
+                paddingLeft={2}
+                paddingRight={2}
+                paddingTop={1}
+                paddingBottom={1}
+                flexDirection="row"
+                justifyContent="space-between"
+                alignItems="center"
+              >
+                <text fg={theme.background}>
+                  <strong>Leaderboard</strong>
+                </text>
+                <text fg={theme.backgroundElement}>
+                  {loading() ? "loading..." : `from ${stats()?.total_votes || 0} duels`}
+                </text>
+              </box>
+              <box
+                backgroundColor={theme.backgroundPanel}
+                paddingLeft={2}
+                paddingRight={2}
+                paddingTop={1}
+                paddingBottom={1}
+              >
+                {/* Leaderboard rows - show top 5 */}
+                <box gap={0}>
+                  {leaderboard()
+                    ?.slice(0, 5)
+                    .map((item, index) => (
+                      <box flexDirection="row" justifyContent="space-between" alignItems="center">
+                        <box flexDirection="row" gap={2} alignItems="center" width={25}>
+                          {/* Conditional coloring based on rank */}
+                          <text
+                            fg={
+                              index === 0
+                                ? theme.primary
+                                : index === 1
+                                  ? theme.secondary
+                                  : index === 2
+                                    ? theme.accent
+                                    : theme.text
+                            }
+                          >
+                            {item.rank}.
+                          </text>
+                          <text
+                            fg={
+                              index === 0
+                                ? theme.primary
+                                : index === 1
+                                  ? theme.secondary
+                                  : index === 2
+                                    ? theme.accent
+                                    : theme.text
+                            }
+                          >
+                            {item.model === null || item.model === undefined
+                              ? "Tied"
+                              : (() => {
+                                  const name = item.model.includes("/")
+                                    ? (() => {
+                                        const parts = item.model.split("/")[1]
+                                        // Strip trailing part like -A35B from Qwen3-Coder-480B-A35B
+                                        return parts.includes("-") &&
+                                          /\d+B$/.test(parts.split("-").slice(0, -1).join("-"))
+                                          ? parts.split("-").slice(0, -1).join("-")
+                                          : parts
+                                      })()
+                                    : item.model
+                                  return index < 3 ? <strong>{name}</strong> : name
+                                })()}
+                          </text>
+                        </box>
+                        <box flexDirection="row" gap={2} alignItems="center">
+                          <text fg={theme.textMuted}>
+                            {item.win_rate === null || item.win_rate === undefined
+                              ? "Tied"
+                              : `${item.win_rate.toFixed(1)}%`}{" "}
+                            ({item.rating ?? 0})
+                          </text>
+                        </box>
+                      </box>
+                    ))}
+                </box>
+              </box>
+            </box>
+          </Show>
+        </box>
+
         <box width="100%" maxWidth={75} zIndex={1000} paddingTop={1}>
           <Prompt
             ref={(r) => {
@@ -120,7 +283,13 @@ export function Home() {
                   const rightSession = await sdk.client.session.create({})
                   if (rightSession.data?.id) {
                     const rightSessionID = rightSession.data.id
-                    duelLog.info("home forking into split", { sessionID, rightSessionID, duelSessionId, leftDuelSide: "left", rightDuelSide: "right" })
+                    duelLog.info("home forking into split", {
+                      sessionID,
+                      rightSessionID,
+                      duelSessionId,
+                      leftDuelSide: "left",
+                      rightDuelSide: "right",
+                    })
                     const selectedModel = local.model.current()
                     const nonTextParts = promptInfo.parts.filter((part) => part.type !== "text")
 
