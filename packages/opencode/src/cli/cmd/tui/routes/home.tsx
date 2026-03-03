@@ -59,19 +59,30 @@ export function Home() {
   const [loading, setLoading] = createSignal(false)
   const [error, setError] = createSignal<string | null>(null)
 
+  const CACHE_KEY = "duel_stats_cache"
+  const CACHE_TTL = 24 * 60 * 60 * 1000 // 24 hours
+
   async function fetchDuelStats() {
+    const bunEnv = typeof Bun !== "undefined" ? (Bun as { env: Record<string, string | undefined> }).env : undefined
+    const apiKey = process.env["VIBEDUEL_API_KEY"] ?? bunEnv?.VIBEDUEL_API_KEY
+
+    if (!apiKey) {
+      setError("No API key available")
+      return
+    }
+
+    const cached = kv.get(CACHE_KEY) as { leaderboard: any[]; stats: any; timestamp: number } | undefined
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      setLeaderboard(cached.leaderboard)
+      setStats(cached.stats)
+      return
+    }
+
     try {
       setLoading(true)
       setError(null)
 
-      const bunEnv = typeof Bun !== "undefined" ? (Bun as { env: Record<string, string | undefined> }).env : undefined
       const baseURL = process.env["VIBEDUEL_BASE_URL"] ?? bunEnv?.VIBEDUEL_BASE_URL ?? "https://api.vibeduel.ai/v1"
-      const apiKey = process.env["VIBEDUEL_API_KEY"] ?? bunEnv?.VIBEDUEL_API_KEY
-
-      if (!apiKey) {
-        setError("No API key available")
-        return
-      }
 
       // Fetch both endpoints in parallel
       const [leaderboardRes, statsRes] = await Promise.all([
@@ -96,6 +107,9 @@ export function Home() {
       }
       const statsData = await statsRes.json()
       setStats(statsData)
+
+      // Cache the results
+      kv.set(CACHE_KEY, { leaderboard: leaderboardData.leaderboard || [], stats: statsData, timestamp: Date.now() })
     } catch (err) {
       console.error("Failed to fetch duel stats:", err)
       setError("Failed to load leaderboard data")
