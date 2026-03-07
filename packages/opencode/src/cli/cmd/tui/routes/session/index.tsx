@@ -140,21 +140,6 @@ export function Session() {
   const sdk = useSDK()
   const local = useLocal()
 
-  const [credits, setCredits] = createSignal<number | null>(null)
-  async function fetchCredits() {
-    const baseURL = process.env["VIBEDUEL_BASE_URL"] ?? "https://api.vibeduel.ai/v1"
-    const apiKey = process.env["VIBEDUEL_API_KEY"]
-    if (!apiKey) return
-    const res = await fetch(`${baseURL.replace(/\/v1$/, "")}/v1/credits`, {
-      headers: { Authorization: `Bearer ${apiKey}` },
-    })
-    if (res.ok) {
-      const data = await res.json()
-      setCredits(data.credits)
-    }
-  }
-  fetchCredits()
-
   const [sidebar, setSidebar] = createSignal<"show" | "hide" | "auto">(kv.get("sidebar", "hide"))
   const [conceal, setConceal] = createSignal(true)
   const [showThinking, setShowThinking] = createSignal(kv.get("thinking_visibility", true))
@@ -232,18 +217,6 @@ export function Session() {
       style: "currency",
       currency: "USD",
     }).format(total)
-  })
-  const tokenContext = createMemo(() => {
-    const last = messages().findLast((x) => x.role === "assistant" && x.tokens.output > 0) as AssistantMessage | undefined
-    if (!last) return undefined
-    const total =
-      last.tokens.input + last.tokens.output + last.tokens.reasoning + last.tokens.cache.read + last.tokens.cache.write
-    const model = sync.data.provider.find((x) => x.id === last.providerID)?.models[last.modelID]
-    let result = total.toLocaleString()
-    if (model?.limit.context) {
-      result += "  " + Math.round((total / model.limit.context) * 100) + "%"
-    }
-    return result
   })
   const promptSession = createMemo(() => sync.session.get(promptSessionID()))
   const promptPermissions = createMemo(() => {
@@ -583,7 +556,6 @@ export function Session() {
                     promptRef.set(r)
                   }}
                   onSubmit={async (_sessionID, _promptInfo, duelSessionId) => {
-                    fetchCredits()
                     const winner = pendingForkWinner()
                     duelLog.info("onSubmit fired", {
                       duelSessionId,
@@ -663,10 +635,6 @@ export function Session() {
               </box>
             </box>
           </Show>
-          <box position="absolute" bottom={0} right={1} flexDirection="row" gap={2}>
-            <text fg={theme.textMuted} wrapMode="none">{tokenContext() ?? "—"}</text>
-            <text fg={theme.textMuted} wrapMode="none">Credits: {credits() !== null ? `${credits()}/250` : "—"}</text>
-          </box>
         </box>
       </box>
     </context.Provider>
