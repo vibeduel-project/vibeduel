@@ -35,6 +35,7 @@ import { DialogProvider as DialogProviderConnect } from "../dialog-provider"
 import { DialogAlert } from "../../ui/dialog-alert"
 import { useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv"
+import type { AssistantMessage } from "@opencode-ai/sdk/v2"
 
 export type PromptProps = {
   sessionID?: string
@@ -141,6 +142,37 @@ export function Prompt(props: PromptProps) {
   const renderer = useRenderer()
   const { theme, syntax } = useTheme()
   const kv = useKV()
+
+  // Credits fetching
+  const [credits, setCredits] = createSignal<number | null>(null)
+  async function fetchCredits() {
+    const baseURL = process.env["VIBEDUEL_BASE_URL"] ?? "https://api.vibeduel.ai/v1"
+    const apiKey = process.env["VIBEDUEL_API_KEY"]
+    if (!apiKey) return
+    const res = await fetch(`${baseURL.replace(/\/v1$/, "")}/v1/credits`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    })
+    if (res.ok) {
+      const data = await res.json()
+      setCredits(data.credits)
+    }
+  }
+  fetchCredits()
+
+  // Token context calculation
+  const messages = createMemo(() => props.sessionID ? (sync.data.message[props.sessionID] ?? []) : [])
+  const tokenContext = createMemo(() => {
+    const last = messages().findLast((x) => x.role === "assistant" && x.tokens.output > 0) as AssistantMessage | undefined
+    if (!last) return undefined
+    const total =
+      last.tokens.input + last.tokens.output + last.tokens.reasoning + last.tokens.cache.read + last.tokens.cache.write
+    const model = sync.data.provider.find((x) => x.id === last.providerID)?.models[last.modelID]
+    let result = total.toLocaleString()
+    if (model?.limit.context) {
+      result += "  " + Math.round((total / model.limit.context) * 100) + "%"
+    }
+    return result
+  })
 
   function promptModelWarning() {
     toast.show({
@@ -567,6 +599,9 @@ export function Prompt(props: PromptProps) {
       broadcastCount: props.broadcastSessionIDs?.length
     })
 
+    // Refresh credits after submitting
+    fetchCredits()
+
     if (props.disabled) {
       Log.Default.debug("Prompt.submit blocked: disabled is true")
       toast.show({ message: "Debug: Submit blocked (disabled=true)", variant: "error" })
@@ -973,7 +1008,7 @@ export function Prompt(props: PromptProps) {
         >
           <box
             paddingLeft={2}
-            paddingRight={1}
+            paddingRight={2}
             paddingTop={1}
             flexShrink={0}
             backgroundColor={theme.backgroundElement}
@@ -1183,24 +1218,32 @@ export function Prompt(props: PromptProps) {
               cursorColor={theme.text}
               syntaxStyle={syntax()}
             />
-            <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1}>
-              <text fg={highlight()}>
-                {store.mode === "shell" ? "Shell" : Locale.titlecase(local.agent.current().name)}{" "}
-              </text>
-              <Show when={store.mode === "normal"}>
-                <box flexDirection="row" gap={1}>
-                  <text flexShrink={0} fg={keybind.leader ? theme.textMuted : theme.text}>
-                    {local.model.parsed().model}
-                  </text>
-                  <text fg={theme.textMuted}>{local.model.parsed().provider}</text>
-                  <Show when={showVariant()}>
-                    <text fg={theme.textMuted}>·</text>
-                    <text>
-                      <span style={{ fg: theme.warning, bold: true }}>{local.model.variant.current()}</span>
+            <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1} justifyContent="space-between">
+              {/* Left side: agent/model indicator */}
+              <box flexDirection="row" gap={1}>
+                <text fg={highlight()}>
+                  {store.mode === "shell" ? "Shell" : Locale.titlecase(local.agent.current().name)}{" "}
+                </text>
+                <Show when={store.mode === "normal"}>
+                  <box flexDirection="row" gap={1}>
+                    <text flexShrink={0} fg={keybind.leader ? theme.textMuted : theme.text}>
+                      {local.model.parsed().model}
                     </text>
-                  </Show>
-                </box>
-              </Show>
+                    <text fg={theme.textMuted}>{local.model.parsed().provider}</text>
+                    <Show when={showVariant()}>
+                      <text fg={theme.textMuted}>·</text>
+                      <text>
+                        <span style={{ fg: theme.warning, bold: true }}>{local.model.variant.current()}</span>
+                      </text>
+                    </Show>
+                  </box>
+                </Show>
+              </box>
+              {/* Right side: token context + credits */}
+              <box flexDirection="row" gap={2}>
+                <text fg={theme.textMuted} wrapMode="none">{tokenContext() ?? ""}</text>
+                <text fg={theme.textMuted} wrapMode="none">Credits: {credits() !== null ? `${credits()}/250` : "—"}</text>
+              </box>
             </box>
           </box>
         </box>
