@@ -237,7 +237,7 @@ export function Session() {
   })
   // Check if the last assistant message in a session is done (has time.completed set)
   const leftMessages = createMemo(() => sync.data.message[route.sessionID] ?? [])
-  const rightMessages = createMemo(() => route.rightSessionID ? (sync.data.message[route.rightSessionID] ?? []) : [])
+  const rightMessages = createMemo(() => (route.rightSessionID ? (sync.data.message[route.rightSessionID] ?? []) : []))
   const leftDone = createMemo(() => {
     const last = leftMessages().findLast((x) => x.role === "assistant")
     return !!last?.time.completed
@@ -280,9 +280,14 @@ export function Session() {
     }
   })
 
-  createEffect(on(() => route.sessionID, () => {
-    setAutoDuelDone(false)
-  }))
+  createEffect(
+    on(
+      () => route.sessionID,
+      () => {
+        setAutoDuelDone(false)
+      },
+    ),
+  )
 
   createEffect(() => {
     if (isSplit()) return
@@ -481,58 +486,65 @@ export function Session() {
             </Show>
           </box>
           <Show when={showPrompt()}>
-            <box flexShrink={0} justifyContent="center" alignItems="center" paddingLeft={2} paddingRight={2} paddingBottom={1}>
+            <box
+              flexShrink={0}
+              justifyContent="center"
+              alignItems="center"
+              paddingLeft={2}
+              paddingRight={2}
+              paddingBottom={1}
+            >
               <box width="100%" maxWidth={promptMaxWidth()}>
                 <Show when={promptDisabled()}>
                   <box flexDirection="column" alignItems="center" paddingBottom={1} gap={0}>
-                  <box flexDirection="row" justifyContent="center" gap={1}>
-                    <box
-                      border={["left", "right", "top", "bottom"]}
-                      borderColor={leftColor() ?? theme.border}
-                      paddingLeft={1}
-                      paddingRight={1}
-                      onMouseUp={(e: any) => {
-                        duelLog.info("vote clicked: left", {
-                          eventType: e?.type,
-                          timestamp: Date.now(),
-                          button: e?.button,
-                          detail: e?.detail,
-                          target: e?.target?.toString?.(),
-                          currentTarget: e?.currentTarget?.toString?.(),
-                          stackTrace: new Error().stack,
-                        })
-                        setLeftColor(theme.success)
-                        setRightColor(undefined)
-                        setControlSide("left")
-                        finalizeVote("left")
-                      }}
-                    >
-                      <text fg={leftColor() ?? theme.text}>Left</text>
+                    <box flexDirection="row" justifyContent="center" gap={1}>
+                      <box
+                        border={["left", "right", "top", "bottom"]}
+                        borderColor={leftColor() ?? theme.border}
+                        paddingLeft={1}
+                        paddingRight={1}
+                        onMouseUp={(e: any) => {
+                          duelLog.info("vote clicked: left", {
+                            eventType: e?.type,
+                            timestamp: Date.now(),
+                            button: e?.button,
+                            detail: e?.detail,
+                            target: e?.target?.toString?.(),
+                            currentTarget: e?.currentTarget?.toString?.(),
+                            stackTrace: new Error().stack,
+                          })
+                          setLeftColor(theme.success)
+                          setRightColor(undefined)
+                          setControlSide("left")
+                          finalizeVote("left")
+                        }}
+                      >
+                        <text fg={leftColor() ?? theme.text}>Left</text>
+                      </box>
+                      <box
+                        border={["left", "right", "top", "bottom"]}
+                        borderColor={rightColor() ?? theme.border}
+                        paddingLeft={1}
+                        paddingRight={1}
+                        onMouseUp={(e: any) => {
+                          duelLog.info("vote clicked: right", {
+                            eventType: e?.type,
+                            timestamp: Date.now(),
+                            button: e?.button,
+                            detail: e?.detail,
+                            target: e?.target?.toString?.(),
+                            currentTarget: e?.currentTarget?.toString?.(),
+                            stackTrace: new Error().stack,
+                          })
+                          setRightColor(theme.success)
+                          setLeftColor(undefined)
+                          setControlSide("right")
+                          finalizeVote("right")
+                        }}
+                      >
+                        <text fg={rightColor() ?? theme.text}>Right</text>
+                      </box>
                     </box>
-                    <box
-                      border={["left", "right", "top", "bottom"]}
-                      borderColor={rightColor() ?? theme.border}
-                      paddingLeft={1}
-                      paddingRight={1}
-                      onMouseUp={(e: any) => {
-                        duelLog.info("vote clicked: right", {
-                          eventType: e?.type,
-                          timestamp: Date.now(),
-                          button: e?.button,
-                          detail: e?.detail,
-                          target: e?.target?.toString?.(),
-                          currentTarget: e?.currentTarget?.toString?.(),
-                          stackTrace: new Error().stack,
-                        })
-                        setRightColor(theme.success)
-                        setLeftColor(undefined)
-                        setControlSide("right")
-                        finalizeVote("right")
-                      }}
-                    >
-                      <text fg={rightColor() ?? theme.text}>Right</text>
-                    </box>
-                  </box>
                     <text fg={theme.textMuted}>click to vote</text>
                   </box>
                 </Show>
@@ -593,15 +605,23 @@ export function Session() {
 
                         // Send prompt to both: the original winner and the fork
                         const winnerSide = winner as "left" | "right"
-                        const forkSide = winner === "left" ? "right" as const : "left" as const
-                        duelLog.info("sending prompt to winner", { sessionID: winningID, duelSessionId, duelSide: winnerSide })
+                        const forkSide = winner === "left" ? ("right" as const) : ("left" as const)
+                        duelLog.info("sending prompt to winner", {
+                          sessionID: winningID,
+                          duelSessionId,
+                          duelSide: winnerSide,
+                        })
                         sdk.client.session.prompt({
                           sessionID: winningID,
                           messageID: Identifier.ascending("message"),
                           ...promptPayload,
                           duelSide: winnerSide,
                         })
-                        duelLog.info("sending prompt to fork", { sessionID: forkedID, duelSessionId, duelSide: forkSide })
+                        duelLog.info("sending prompt to fork", {
+                          sessionID: forkedID,
+                          duelSessionId,
+                          duelSide: forkSide,
+                        })
                         sdk.client.session.prompt({
                           sessionID: forkedID,
                           messageID: Identifier.ascending("message"),
@@ -611,9 +631,17 @@ export function Session() {
 
                         // Navigate: the fork replaces the losing side
                         if (winner === "left") {
-                          navigate({ type: "session", sessionID: route.sessionID, rightSessionID: forkedID })
+                          navigate({
+                            type: "session",
+                            sessionID: route.sessionID,
+                            rightSessionID: forkedID,
+                          })
                         } else {
-                          navigate({ type: "session", sessionID: forkedID, rightSessionID: route.rightSessionID })
+                          navigate({
+                            type: "session",
+                            sessionID: forkedID,
+                            rightSessionID: route.rightSessionID,
+                          })
                         }
                       }
                       setPendingForkWinner(undefined)
@@ -641,7 +669,15 @@ export function Session() {
   )
 }
 
-function SessionPane(props: { sessionID: string; width: number; isSplit: boolean; side: "left" | "right"; controlSide: "left" | "right"; otherSessionID?: string; onScrollToBottom?: (fn: () => void) => void }) {
+function SessionPane(props: {
+  sessionID: string
+  width: number
+  isSplit: boolean
+  side: "left" | "right"
+  controlSide: "left" | "right"
+  otherSessionID?: string
+  onScrollToBottom?: (fn: () => void) => void
+}) {
   const sync = useSync()
   const kv = useKV()
   const { theme } = useTheme()
@@ -656,7 +692,9 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
   // Create a merged context for this pane
   const ctx = {
     ...parentCtx,
-    get sessionID() { return props.sessionID },
+    get sessionID() {
+      return props.sessionID
+    },
   }
 
   const {
@@ -680,7 +718,7 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
     diffWrapMode,
     setDiffWrapMode,
     animationsEnabled,
-    setAnimationsEnabled
+    setAnimationsEnabled,
   } = ctx
 
   const children = createMemo(() => {
@@ -700,14 +738,12 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
   })
 
   const pending = createMemo(() => {
-    return messages()
-      .findLast((x) => {
-        if (x.role !== "assistant") return false
-        if (x.time.completed) return false
-        if (x.finish && !["tool-calls", "unknown"].includes(x.finish)) return false
-        return true
-      })
-      ?.id
+    return messages().findLast((x) => {
+      if (x.role !== "assistant") return false
+      if (x.time.completed) return false
+      if (x.finish && !["tool-calls", "unknown"].includes(x.finish)) return false
+      return true
+    })?.id
   })
 
   const lastAssistant = createMemo(() => {
@@ -769,8 +805,8 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
 
     const parts = sync.data.part[msg.id] ?? []
     const text = parts
-      .filter(p => p.type === "text")
-      .map(p => p.text)
+      .filter((p) => p.type === "text")
+      .map((p) => p.text)
       .join("")
 
     duelLog.info("assistant message completed", {
@@ -856,29 +892,29 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
   command.register(() => [
     ...(sync.data.config.share !== "disabled"
       ? [
-        {
-          title: "Share session",
-          value: "session.share",
-          suggested: route.type === "session",
-          keybind: "session_share" as const,
-          disabled: !!session()?.share?.url,
-          category: "Session",
-          onSelect: async (dialog: any) => {
-            await sdk.client.session
-              .share({
-                sessionID: route.sessionID,
-              })
-              .then((res) =>
-                Clipboard.copy(res.data!.share!.url).catch(() =>
-                  toast.show({ message: "Failed to copy URL to clipboard", variant: "error" }),
-                ),
-              )
-              .then(() => toast.show({ message: "Share URL copied to clipboard!", variant: "success" }))
-              .catch(() => toast.show({ message: "Failed to share session", variant: "error" }))
-            dialog.clear()
+          {
+            title: "Share session",
+            value: "session.share",
+            suggested: route.type === "session",
+            keybind: "session_share" as const,
+            disabled: !!session()?.share?.url,
+            category: "Session",
+            onSelect: async (dialog: any) => {
+              await sdk.client.session
+                .share({
+                  sessionID: route.sessionID,
+                })
+                .then((res) =>
+                  Clipboard.copy(res.data!.share!.url).catch(() =>
+                    toast.show({ message: "Failed to copy URL to clipboard", variant: "error" }),
+                  ),
+                )
+                .then(() => toast.show({ message: "Share URL copied to clipboard!", variant: "success" }))
+                .catch(() => toast.show({ message: "Failed to share session", variant: "error" }))
+              dialog.clear()
+            },
           },
-        },
-      ]
+        ]
       : []),
     {
       title: "Rename session",
@@ -974,7 +1010,7 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
       category: "Session",
       onSelect: async (dialog) => {
         const status = sync.data.session_status?.[route.sessionID]
-        if (status?.type !== "idle") await sdk.client.session.abort({ sessionID: route.sessionID }).catch(() => { })
+        if (status?.type !== "idle") await sdk.client.session.abort({ sessionID: route.sessionID }).catch(() => {})
         const revert = session()?.revert?.messageID
         const message = messages().findLast((x) => (!revert || x.id < revert) && x.role === "user")
         if (!message) return
@@ -1481,7 +1517,9 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
   // snap to bottom when session changes
   createEffect(on(() => route.sessionID, toBottom))
 
-  const [trackedActions, setTrackedActions] = createSignal<{ toolCallID: string; messageID: string; startTime: number }[]>([])
+  const [trackedActions, setTrackedActions] = createSignal<
+    { toolCallID: string; messageID: string; startTime: number }[]
+  >([])
 
   createEffect(() => {
     const actions = trackedActions()
@@ -1489,7 +1527,7 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
 
     actions.forEach((action) => {
       const parts = sync.data.part[action.messageID] || []
-      const toolPart = parts.find(p => p.type === "tool" && p.callID === action.toolCallID) as ToolPart | undefined
+      const toolPart = parts.find((p) => p.type === "tool" && p.callID === action.toolCallID) as ToolPart | undefined
       if (!toolPart) return
 
       const status = toolPart.state.status
@@ -1498,7 +1536,7 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
         logToSide(props.side, `Action ${status === "completed" ? "completed" : "failed"} in ${duration.toFixed(2)}s`)
 
         // Remove from tracking
-        setTrackedActions(prev => prev.filter(a => a.toolCallID !== action.toolCallID))
+        setTrackedActions((prev) => prev.filter((a) => a.toolCallID !== action.toolCallID))
       }
     })
   })
@@ -1631,7 +1669,7 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
                 active={props.controlSide === props.side}
                 side={props.side}
                 otherSessionID={props.otherSessionID}
-                onPermissionHandled={(action) => setTrackedActions(prev => [...prev, action])}
+                onPermissionHandled={(action) => setTrackedActions((prev) => [...prev, action])}
               />
             </Show>
           </box>

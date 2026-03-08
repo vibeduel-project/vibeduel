@@ -2,7 +2,7 @@ import { useDialog } from "@tui/ui/dialog"
 import { DialogSelect } from "@tui/ui/dialog-select"
 import { useRoute } from "@tui/context/route"
 import { useSync } from "@tui/context/sync"
-import { createEffect, createMemo, createSignal, onMount, Show } from "solid-js"
+import { createMemo, createSignal, onMount, Show } from "solid-js"
 import { Locale } from "@/util/locale"
 import { Keybind } from "@/util/keybind"
 import { useTheme } from "../context/theme"
@@ -41,12 +41,13 @@ export function DialogSessionList() {
         const isDeleting = toDelete() === x.id
         const status = sync.data.session_status?.[x.id]
         const isWorking = status?.type === "busy"
+        const msgCount = (sync.data.message[x.id] ?? []).filter((m) => m.role === "user").length
         return {
           title: isDeleting ? `Press ${deleteKeybind} again to confirm` : x.title,
           bg: isDeleting ? theme.error : undefined,
           value: x.id,
           category,
-          footer: Locale.time(x.time.updated),
+          footer: `${msgCount} msg · ${Locale.time(x.time.updated)}`,
           gutter: isWorking ? (
             <Show when={kv.get("animations_enabled", true)} fallback={<text fg={theme.textMuted}>[⋯]</text>}>
               <spinner frames={spinnerFrames} interval={80} color={theme.primary} />
@@ -55,10 +56,6 @@ export function DialogSessionList() {
         }
       })
       .slice(0, 150)
-  })
-
-  createEffect(() => {
-    console.log("session count", sync.data.session.length)
   })
 
   onMount(() => {

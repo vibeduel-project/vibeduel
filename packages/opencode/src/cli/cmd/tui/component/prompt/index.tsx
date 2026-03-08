@@ -640,9 +640,9 @@ export function Prompt(props: PromptProps) {
     const sessionID = props.sessionID
       ? props.sessionID
       : await (async () => {
-        const sessionID = await sdk.client.session.create({}).then((x) => x.data!.id)
-        return sessionID
-      })()
+          const sessionID = await sdk.client.session.create({}).then((x) => x.data!.id)
+          return sessionID
+        })()
     const messageID = Identifier.ascending("message")
     let inputText = store.prompt.input
 
@@ -1037,17 +1037,20 @@ export function Prompt(props: PromptProps) {
                   e.preventDefault()
                   const current = local.model.current()
                   if (current?.modelID === "duel") {
-                    const target = lastSingleModel ?? (() => {
-                      const provider = sync.data.provider.find((p) =>
-                        Object.keys(p.models).some((id) => id !== "duel"),
-                      )
-                      if (!provider) return undefined
-                      const defaultModel = sync.data.provider_default[provider.id]
-                      const modelID = (defaultModel && defaultModel !== "duel" ? defaultModel : undefined)
-                        ?? Object.keys(provider.models).find((id) => id !== "duel")
-                      if (!modelID) return undefined
-                      return { providerID: provider.id, modelID }
-                    })()
+                    const target =
+                      lastSingleModel ??
+                      (() => {
+                        const provider = sync.data.provider.find((p) =>
+                          Object.keys(p.models).some((id) => id !== "duel"),
+                        )
+                        if (!provider) return undefined
+                        const defaultModel = sync.data.provider_default[provider.id]
+                        const modelID =
+                          (defaultModel && defaultModel !== "duel" ? defaultModel : undefined) ??
+                          Object.keys(provider.models).find((id) => id !== "duel")
+                        if (!modelID) return undefined
+                        return { providerID: provider.id, modelID }
+                      })()
                     if (target) {
                       duelLog.info("shift+tab: switching to single mode", { model: target })
                       local.model.set(target)
