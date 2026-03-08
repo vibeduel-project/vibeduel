@@ -7,6 +7,7 @@ import { Config } from "../config/config"
 import { Flag } from "../flag/flag"
 import { Identifier } from "../id/id"
 import { Installation } from "../installation"
+import { getDuel } from "../duel"
 
 import { Storage } from "../storage/storage"
 import { Log } from "../util/log"
@@ -24,16 +25,127 @@ export namespace Session {
   const log = Log.create({ service: "session" })
 
   const parentTitlePrefix = "New session - "
-  const childTitlePrefix = "Child session - "
+  const forkTitlePrefix = "Fork - "
 
-  function createDefaultTitle(isChild = false) {
-    return (isChild ? childTitlePrefix : parentTitlePrefix) + new Date().toISOString()
+  function createDefaultTitle(options: { isFork?: boolean; isDuel?: boolean } = {}) {
+    const { isFork = false, isDuel = false } = options
+    if (isDuel) {
+      return "Duel: "
+    }
+    const prefix = isFork ? forkTitlePrefix : parentTitlePrefix
+    return prefix + new Date().toISOString()
   }
 
   export function isDefaultTitle(title: string) {
     return new RegExp(
-      `^(${parentTitlePrefix}|${childTitlePrefix})\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$`,
+      `^(${parentTitlePrefix}|${forkTitlePrefix}|Duel: )\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$`,
     ).test(title)
+  }
+
+  export function isDuelTitle(title: string) {
+    return title.startsWith("Duel: ")
+  }
+
+  /**
+   * Derive session title from user prompt parts.
+   * Priority: text > files > fallback to default
+   */
+  export function deriveTitleFromPrompt(
+    parts: { type: string; text?: string; filename?: string }[],
+  ): string | undefined {
+    // Find first text part (non-synthetic)
+    const textPart = parts.find((p) => p.type === "text" && p.text && p.text.trim().length > 0)
+    if (textPart?.text) {
+      const text = textPart.text.trim()
+      return text.length > 50 ? text.substring(0, 47) + "..." : text
+    }
+
+    // Find file parts (non-synthetic)
+    const fileParts = parts.filter((p) => p.type === "file" && p.filename)
+    if (fileParts.length > 0) {
+      const filenames = fileParts.map((p) => p.filename!).join(" ")
+      return filenames.length > 50 ? filenames.substring(0, 47) + "..." : filenames
+    }
+
+    return undefined
+  }
+
+  /**
+   * Update session title from first user message.
+   * Called after first user message is created.
+   */
+  export async function updateTitleFromFirstMessage(
+    sessionID: string,
+    parts: { type: string; text?: string; filename?: string; synthetic?: boolean }[],
+    isDuel?: boolean,
+  ) {
+    const session = await get(sessionID)
+    if (!session) {
+      log.info("title update skipped: session not found", { sessionID })
+      return
+    }
+
+    // Detect if in duel mode: from explicit flag OR from title prefix
+    const isDuelFromTitle = isDuelTitle(session.title) || session.title === "Duel: "
+    const inDuelMode = isDuel ?? isDuelFromTitle
+
+    // Skip if already has custom title (not default timestamp-based or "Duel: " prefix)
+    // Only update title if it's still the initial default (timestamp-based) or "Duel: " without prompt
+    const hasTimestamp = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(session.title)
+    const isDuelPrefix = session.title === "Duel: "
+
+    log.info("title update check", {
+      sessionID,
+      title: session.title,
+      hasTimestamp,
+      isDuelPrefix,
+      isDefaultTitle: isDefaultTitle(session.title),
+      parentID: session.parentID,
+      inDuelMode,
+    })
+
+    // Only update if title is still the default (has timestamp) or "Duel: " prefix
+    // Once title has a real prompt, never update it again
+    if (!hasTimestamp && !isDuelPrefix) {
+      log.info("title update skipped: already has custom title", { sessionID, title: session.title })
+      return
+    }
+
+    // Filter out synthetic parts (these are system-generated, not user content)
+    const userParts = parts.filter((p) => !p.synthetic)
+    log.info("title parts check", { sessionID, totalParts: parts.length, userParts: userParts.length })
+    if (userParts.length === 0) {
+      log.info("title update skipped: no user parts", { sessionID })
+      return
+    }
+
+    const derivedTitle = deriveTitleFromPrompt(userParts)
+    if (!derivedTitle) {
+      log.info("title update skipped: could not derive title from prompt", { sessionID })
+      return
+    }
+
+    // Determine title format based on session type
+    const isFork = !!session.parentID
+
+    log.info("title format decision", { sessionID, isFork, inDuelMode, derivedTitle })
+
+    let newTitle: string
+    if (inDuelMode) {
+      newTitle = "Duel: " + derivedTitle
+    } else if (isFork) {
+      // Fork: truncate to 30 chars + timestamp
+      const truncated = derivedTitle.length > 30 ? derivedTitle.substring(0, 27) + "..." : derivedTitle
+      newTitle = "Fork: " + truncated + " - " + new Date().toISOString()
+    } else {
+      newTitle = derivedTitle
+    }
+
+    await update(sessionID, (draft) => {
+      draft.title = newTitle
+    })
+
+    log.info("title updated from prompt", { sessionID, title: newTitle })
   }
 
   export const Info = z
@@ -147,8 +259,14 @@ export namespace Session {
       messageID: Identifier.schema("message").optional(),
     }),
     async (input) => {
+      // Check if source session is in duel mode
+      const isDuel = !!getDuel(input.sessionID)
+
+      log.info("fork creating", { sourceSessionID: input.sessionID, isDuel })
       const session = await createNext({
         directory: Instance.directory,
+        parentID: input.sessionID, // Mark as fork/child session
+        isDuel,
       })
       const msgs = await messages({ sessionID: input.sessionID })
       for (const msg of msgs) {
@@ -184,14 +302,16 @@ export namespace Session {
     parentID?: string
     directory: string
     permission?: PermissionNext.Ruleset
+    isDuel?: boolean
   }) {
+    const isFork = !!input.parentID
     const result: Info = {
       id: Identifier.descending("session", input.id),
       version: Installation.VERSION,
       projectID: Instance.project.id,
       directory: input.directory,
       parentID: input.parentID,
-      title: input.title ?? createDefaultTitle(!!input.parentID),
+      title: input.title ?? createDefaultTitle({ isFork, isDuel: input.isDuel }),
       permission: input.permission,
       time: {
         created: Date.now(),

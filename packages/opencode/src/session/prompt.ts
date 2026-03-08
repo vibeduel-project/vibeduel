@@ -160,6 +160,10 @@ export namespace SessionPrompt {
     log.info("latency: before message creation", { timestamp: Date.now(), sessionID: input.sessionID })
     const message = await createUserMessage(input)
     await Session.touch(input.sessionID)
+
+    // Update session title from first user prompt (pass duelSessionId to detect duel mode)
+    await Session.updateTitleFromFirstMessage(input.sessionID, message.parts, !!input.duelSessionId)
+
     log.info("latency: after message creation", { timestamp: Date.now(), sessionID: input.sessionID })
 
     // this is backwards compatibility for allowing `tools` to be specified when

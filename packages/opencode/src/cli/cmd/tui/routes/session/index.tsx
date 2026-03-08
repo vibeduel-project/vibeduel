@@ -508,58 +508,65 @@ export function Session() {
             </Show>
           </box>
           <Show when={showPrompt()}>
-            <box flexShrink={0} justifyContent="center" alignItems="center" paddingLeft={2} paddingRight={2} paddingBottom={1}>
+            <box
+              flexShrink={0}
+              justifyContent="center"
+              alignItems="center"
+              paddingLeft={2}
+              paddingRight={2}
+              paddingBottom={1}
+            >
               <box width="100%" maxWidth={promptMaxWidth()}>
                 <Show when={promptDisabled()}>
                   <box flexDirection="column" alignItems="center" paddingBottom={1} gap={0}>
-                  <box flexDirection="row" justifyContent="center" gap={1}>
-                    <box
-                      border={["left", "right", "top", "bottom"]}
-                      borderColor={leftColor() ?? theme.border}
-                      paddingLeft={1}
-                      paddingRight={1}
-                      onMouseUp={(e: any) => {
-                        duelLog.info("vote clicked: left", {
-                          eventType: e?.type,
-                          timestamp: Date.now(),
-                          button: e?.button,
-                          detail: e?.detail,
-                          target: e?.target?.toString?.(),
-                          currentTarget: e?.currentTarget?.toString?.(),
-                          stackTrace: new Error().stack,
-                        })
-                        setLeftColor(theme.success)
-                        setRightColor(undefined)
-                        setControlSide("left")
-                        finalizeVote("left")
-                      }}
-                    >
-                      <text fg={leftColor() ?? theme.text}>Left</text>
+                    <box flexDirection="row" justifyContent="center" gap={1}>
+                      <box
+                        border={["left", "right", "top", "bottom"]}
+                        borderColor={leftColor() ?? theme.border}
+                        paddingLeft={1}
+                        paddingRight={1}
+                        onMouseUp={(e: any) => {
+                          duelLog.info("vote clicked: left", {
+                            eventType: e?.type,
+                            timestamp: Date.now(),
+                            button: e?.button,
+                            detail: e?.detail,
+                            target: e?.target?.toString?.(),
+                            currentTarget: e?.currentTarget?.toString?.(),
+                            stackTrace: new Error().stack,
+                          })
+                          setLeftColor(theme.success)
+                          setRightColor(undefined)
+                          setControlSide("left")
+                          finalizeVote("left")
+                        }}
+                      >
+                        <text fg={leftColor() ?? theme.text}>Left</text>
+                      </box>
+                      <box
+                        border={["left", "right", "top", "bottom"]}
+                        borderColor={rightColor() ?? theme.border}
+                        paddingLeft={1}
+                        paddingRight={1}
+                        onMouseUp={(e: any) => {
+                          duelLog.info("vote clicked: right", {
+                            eventType: e?.type,
+                            timestamp: Date.now(),
+                            button: e?.button,
+                            detail: e?.detail,
+                            target: e?.target?.toString?.(),
+                            currentTarget: e?.currentTarget?.toString?.(),
+                            stackTrace: new Error().stack,
+                          })
+                          setRightColor(theme.success)
+                          setLeftColor(undefined)
+                          setControlSide("right")
+                          finalizeVote("right")
+                        }}
+                      >
+                        <text fg={rightColor() ?? theme.text}>Right</text>
+                      </box>
                     </box>
-                    <box
-                      border={["left", "right", "top", "bottom"]}
-                      borderColor={rightColor() ?? theme.border}
-                      paddingLeft={1}
-                      paddingRight={1}
-                      onMouseUp={(e: any) => {
-                        duelLog.info("vote clicked: right", {
-                          eventType: e?.type,
-                          timestamp: Date.now(),
-                          button: e?.button,
-                          detail: e?.detail,
-                          target: e?.target?.toString?.(),
-                          currentTarget: e?.currentTarget?.toString?.(),
-                          stackTrace: new Error().stack,
-                        })
-                        setRightColor(theme.success)
-                        setLeftColor(undefined)
-                        setControlSide("right")
-                        finalizeVote("right")
-                      }}
-                    >
-                      <text fg={rightColor() ?? theme.text}>Right</text>
-                    </box>
-                  </box>
                     <text fg={theme.textMuted}>click to vote</text>
                   </box>
                 </Show>
@@ -575,6 +582,7 @@ export function Session() {
                   visible={true}
                   broadcastSessionIDs={route.rightSessionID ? [route.rightSessionID] : undefined}
                   compareMode={local.model.current()?.modelID === "duel"}
+                  duelSessionId={route.duelSessionId}
                   skipAutoSend={!!pendingForkWinner()}
                   disabled={promptDisabled()}
                   focused={!promptDisabled()}
@@ -639,9 +647,19 @@ export function Session() {
 
                         // Navigate: the fork replaces the losing side
                         if (winner === "left") {
-                          navigate({ type: "session", sessionID: route.sessionID, rightSessionID: forkedID })
+                          navigate({
+                            type: "session",
+                            sessionID: route.sessionID,
+                            rightSessionID: forkedID,
+                            duelSessionId,
+                          })
                         } else {
-                          navigate({ type: "session", sessionID: forkedID, rightSessionID: route.rightSessionID })
+                          navigate({
+                            type: "session",
+                            sessionID: forkedID,
+                            rightSessionID: route.rightSessionID,
+                            duelSessionId,
+                          })
                         }
                       }
                       setPendingForkWinner(undefined)
