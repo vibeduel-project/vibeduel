@@ -1,31 +1,23 @@
-import { type Accessor, createMemo, Match, Show, Switch } from "solid-js"
+import { type Accessor, createMemo, createSignal, onMount, Show } from "solid-js"
+import type { AssistantMessage } from "@opencode-ai/sdk/v2"
 import { useRouteData } from "@tui/context/route"
 import { useSync } from "@tui/context/sync"
-import { pipe, sumBy } from "remeda"
 import { useTheme } from "@tui/context/theme"
-import { SplitBorder, EmptyBorder } from "@tui/component/border"
-import type { AssistantMessage, Session } from "@opencode-ai/sdk/v2"
-import { useDirectory } from "../../context/directory"
 import { useKeybind } from "../../context/keybind"
+import { useCommandDialog } from "@tui/component/dialog-command"
 
-const Title = (props: { session: Accessor<Session> }) => {
-  const { theme } = useTheme()
-  return (
-    <text fg={theme.text}>
-      <Show when={props.session()}>
-        <span style={{ bold: true }}>#</span> <span style={{ bold: true }}>{props.session()?.title}</span>
-      </Show>
-    </text>
-  )
-}
-
-const ContextInfo = (props: { context: Accessor<string | undefined>; cost: Accessor<string> }) => {
+const ContextInfo = (props: { context: Accessor<string | undefined>; credits: Accessor<number | null> }) => {
   const { theme } = useTheme()
   return (
     <Show when={props.context()}>
-      <text fg={theme.textMuted} wrapMode="none" flexShrink={0}>
-        {props.context()} ({props.cost()})
-      </text>
+      <box flexDirection="row" gap={2} flexShrink={0}>
+        <text fg={theme.textMuted} wrapMode="none">
+          {props.context()}
+        </text>
+        <text fg={theme.textMuted} wrapMode="none">
+          Credits: {props.credits() !== null ? `${props.credits()}/250` : "—"}
+        </text>
+      </box>
     </Show>
   )
 }
@@ -33,23 +25,43 @@ const ContextInfo = (props: { context: Accessor<string | undefined>; cost: Acces
 export function Header() {
   const route = useRouteData("session")
   const sync = useSync()
-  const session = createMemo(() => sync.session.get(route.sessionID)!)
+  const session = createMemo(() => sync.session.get(route.sessionID))
   const messages = createMemo(() => sync.data.message[route.sessionID] ?? [])
-  const shareEnabled = createMemo(() => sync.data.config.share !== "disabled")
+  const keybind = useKeybind()
+  const command = useCommandDialog()
 
-  const cost = createMemo(() => {
-    const total = pipe(
-      messages(),
-      sumBy((x) => (x.role === "assistant" ? x.cost : 0)),
-    )
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(total)
+  // Credits fetching (same as prompt component)
+  const [credits, setCredits] = createSignal<number | null>(null)
+  async function fetchCredits() {
+    const baseURL = process.env["VIBEDUEL_BASE_URL"] ?? "https://api.vibeduel.ai/v1"
+    const apiKey = process.env["VIBEDUEL_API_KEY"]
+    if (!apiKey) return
+    const res = await fetch(`${baseURL.replace(/\/v1$/, "")}/v1/credits`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    })
+    if (res.ok) {
+      const data = await res.json()
+      setCredits(data.credits)
+    }
+  }
+  onMount(() => fetchCredits())
+
+  // Get children sessions for this subagent
+  const children = createMemo(() => {
+    const s = session()
+    if (!s) return []
+    const parentID = s.parentID ?? s.id
+    return sync.data.session
+      .filter((x) => x.parentID === parentID || x.id === parentID)
+      .toSorted((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   })
 
+  const hasMultipleChildren = createMemo(() => children().filter((x) => !!x.parentID).length > 1)
+
   const context = createMemo(() => {
-    const last = messages().findLast((x) => x.role === "assistant" && x.tokens.output > 0) as AssistantMessage
+    const last = messages().findLast((x) => x.role === "assistant" && x.tokens.output > 0) as
+      | AssistantMessage
+      | undefined
     if (!last) return
     const total =
       last.tokens.input + last.tokens.output + last.tokens.reasoning + last.tokens.cache.read + last.tokens.cache.write
@@ -62,66 +74,70 @@ export function Header() {
   })
 
   const { theme } = useTheme()
-  const keybind = useKeybind()
+
+  // For subagent sessions (when parentID exists)
+  const isSubagent = createMemo(() => !!session()?.parentID)
+
+  // Hover states for buttons
+  const [parentHover, setParentHover] = createSignal(false)
+  const [prevHover, setPrevHover] = createSignal(false)
+  const [nextHover, setNextHover] = createSignal(false)
 
   return (
-    <box flexShrink={0}>
-      <box
-        paddingTop={1}
-        paddingBottom={1}
-        paddingLeft={2}
-        paddingRight={1}
-        {...SplitBorder}
-        border={["left"]}
-        borderColor={theme.border}
-        flexShrink={0}
-        backgroundColor={theme.backgroundPanel}
-      >
-        <Switch>
-          <Match when={session()?.parentID}>
-            <box flexDirection="row" gap={2}>
-              <text fg={theme.text}>
-                <b>Subagent session</b>
-              </text>
-              <text fg={theme.text}>
-                Parent <span style={{ fg: theme.textMuted }}>{keybind.print("session_parent")}</span>
-              </text>
+    <Show when={isSubagent()}>
+      <box flexShrink={0} paddingLeft={1} paddingRight={1} paddingTop={0} paddingBottom={0}>
+        <box flexDirection="row" gap={2} alignItems="center">
+          {/* Parent button */}
+          <box
+            onMouseOver={() => setParentHover(true)}
+            onMouseOut={() => setParentHover(false)}
+            onMouseUp={() => command.trigger("session.parent")}
+            backgroundColor={parentHover() ? theme.backgroundElement : "transparent"}
+            paddingLeft={1}
+            paddingRight={1}
+          >
+            <text fg={theme.text}>
+              Parent <span style={{ fg: theme.textMuted }}>{keybind.print("session_parent")}</span>
+            </text>
+          </box>
+
+          {/* Prev button - only show when multiple children */}
+          <Show when={hasMultipleChildren()}>
+            <box
+              onMouseOver={() => setPrevHover(true)}
+              onMouseOut={() => setPrevHover(false)}
+              onMouseUp={() => command.trigger("session.child.previous")}
+              backgroundColor={prevHover() ? theme.backgroundElement : "transparent"}
+              paddingLeft={1}
+              paddingRight={1}
+            >
               <text fg={theme.text}>
                 Prev <span style={{ fg: theme.textMuted }}>{keybind.print("session_child_cycle_reverse")}</span>
               </text>
+            </box>
+          </Show>
+
+          {/* Next button - only show when multiple children */}
+          <Show when={hasMultipleChildren()}>
+            <box
+              onMouseOver={() => setNextHover(true)}
+              onMouseOut={() => setNextHover(false)}
+              onMouseUp={() => command.trigger("session.child.next")}
+              backgroundColor={nextHover() ? theme.backgroundElement : "transparent"}
+              paddingLeft={1}
+              paddingRight={1}
+            >
               <text fg={theme.text}>
                 Next <span style={{ fg: theme.textMuted }}>{keybind.print("session_child_cycle")}</span>
               </text>
-              <box flexGrow={1} flexShrink={1} />
-              <ContextInfo context={context} cost={cost} />
             </box>
-          </Match>
-          <Match when={true}>
-            <box flexDirection="row" justifyContent="space-between" gap={1}>
-              <Title session={session} />
-              <ContextInfo context={context} cost={cost} />
-            </box>
-            <Show when={shareEnabled()}>
-              <box flexDirection="row" justifyContent="space-between" gap={1}>
-                <box flexGrow={1} flexShrink={1}>
-                  <Switch>
-                    <Match when={session()?.share?.url}>
-                      <text fg={theme.textMuted} wrapMode="word">
-                        {session()?.share!.url}
-                      </text>
-                    </Match>
-                    <Match when={true}>
-                      <text fg={theme.text} wrapMode="word">
-                        /share <span style={{ fg: theme.textMuted }}>copy link</span>
-                      </text>
-                    </Match>
-                  </Switch>
-                </box>
-              </box>
-            </Show>
-          </Match>
-        </Switch>
+          </Show>
+
+          <box flexGrow={1} flexShrink={1} />
+
+          <ContextInfo context={context} credits={credits} />
+        </box>
       </box>
-    </box>
+    </Show>
   )
 }

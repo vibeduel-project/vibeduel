@@ -6,6 +6,7 @@ import {
   For,
   Match,
   on,
+  onMount,
   Show,
   Switch,
   useContext,
@@ -26,6 +27,7 @@ import {
   type RGBA,
 } from "@opentui/core"
 import { Prompt, type PromptRef } from "@tui/component/prompt"
+import { Spinner } from "../../component/spinner"
 import type { AssistantMessage, Part, ToolPart, UserMessage, TextPart, ReasoningPart } from "@opencode-ai/sdk/v2"
 import { useLocal } from "@tui/context/local"
 import { Locale } from "@/util/locale"
@@ -50,8 +52,6 @@ import { parsePatch } from "diff"
 import { useDialog } from "../../ui/dialog"
 import { Identifier } from "@/id/id"
 
-
-
 function logToSide(side: "left" | "right", text: string) {
   duelLog.info(text, { side })
 }
@@ -66,6 +66,7 @@ import { DialogTimeline } from "./dialog-timeline"
 import { DialogForkFromTimeline } from "./dialog-fork-from-timeline"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
 import { Sidebar } from "./sidebar"
+import { Header } from "./header"
 import { LANGUAGE_EXTENSIONS } from "@/lsp/language"
 import parsers from "../../../../../../parsers-config.ts"
 import { Clipboard } from "../../util/clipboard"
@@ -83,13 +84,13 @@ import { formatTranscript } from "../../util/transcript"
 addDefaultParsers(parsers.parsers)
 
 class CustomSpeedScroll implements ScrollAcceleration {
-  constructor(private speed: number) { }
+  constructor(private speed: number) {}
 
   tick(_now?: number): number {
     return this.speed
   }
 
-  reset(): void { }
+  reset(): void {}
 }
 
 const context = createContext<{
@@ -205,7 +206,6 @@ export function Session() {
   const [scrollToBottomLeft, setScrollToBottomLeft] = createSignal<(() => void) | undefined>(undefined)
   const [scrollToBottomRight, setScrollToBottomRight] = createSignal<(() => void) | undefined>(undefined)
 
-
   const promptSessionID = createMemo(() => route.sessionID)
   const messages = createMemo(() => sync.data.message[promptSessionID()] ?? [])
   const cost = createMemo(() => {
@@ -219,6 +219,17 @@ export function Session() {
     }).format(total)
   })
   const promptSession = createMemo(() => sync.session.get(promptSessionID()))
+
+  // Children sessions for subagent navigation
+  const children = createMemo(() => {
+    const s = promptSession()
+    if (!s) return []
+    const parentID = s.parentID ?? s.id
+    return sync.data.session
+      .filter((x) => x.parentID === parentID || x.id === parentID)
+      .toSorted((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+  })
+
   const promptPermissions = createMemo(() => {
     const s = promptSession()
     if (!s) return []
@@ -1428,7 +1439,7 @@ function SessionPane(props: {
       value: "session.child.next",
       keybind: "session_child_cycle",
       category: "Session",
-      disabled: true,
+      enabled: !!session()?.parentID,
       onSelect: (dialog) => {
         moveChild(1)
         dialog.clear()
@@ -1439,7 +1450,7 @@ function SessionPane(props: {
       value: "session.child.previous",
       keybind: "session_child_cycle_reverse",
       category: "Session",
-      disabled: true,
+      enabled: !!session()?.parentID,
       onSelect: (dialog) => {
         moveChild(-1)
         dialog.clear()
@@ -1450,7 +1461,7 @@ function SessionPane(props: {
       value: "session.parent",
       keybind: "session_parent",
       category: "Session",
-      disabled: true,
+      enabled: !!session()?.parentID,
       onSelect: (dialog) => {
         const parentID = session()?.parentID
         if (parentID) {
@@ -1675,6 +1686,11 @@ function SessionPane(props: {
           </box>
         </Show>
         <Toast />
+        <Show when={session()?.parentID}>
+          <box marginTop={-1} marginBottom={1}>
+            <Header />
+          </box>
+        </Show>
       </box>
       <Show when={sidebarVisible()}>
         <Sidebar sessionID={props.sessionID} />
@@ -2018,11 +2034,21 @@ function ToolTitle(props: { fallback: string; when: any; icon: string; children:
   )
 }
 
-function InlineTool(props: { icon: string; complete: any; pending: string; children: JSX.Element; part: ToolPart }) {
+function InlineTool(props: {
+  icon: string
+  complete: any
+  pending: string
+  spinner?: boolean
+  children: JSX.Element
+  part: ToolPart
+  onClick?: () => void
+}) {
   const [margin, setMargin] = createSignal(0)
   const { theme } = useTheme()
   const ctx = use()
   const sync = useSync()
+  const renderer = useRenderer()
+  const [hover, setHover] = createSignal(false)
 
   const permission = createMemo(() => {
     const callID = sync.data.permission[ctx.sessionID]?.at(0)?.tool?.callID
@@ -2032,18 +2058,30 @@ function InlineTool(props: { icon: string; complete: any; pending: string; child
 
   const fg = createMemo(() => {
     if (permission()) return theme.warning
+    if (hover() && props.onClick) return theme.text
     if (props.complete) return theme.textMuted
     return theme.text
   })
 
   const error = createMemo(() => (props.part.state.status === "error" ? props.part.state.error : undefined))
 
-  const denied = createMemo(() => error()?.includes("rejected permission") || error()?.includes("specified a rule"))
+  const denied = createMemo(
+    () =>
+      error()?.includes("rejected permission") ||
+      error()?.includes("specified a rule") ||
+      error()?.includes("user dismissed"),
+  )
 
   return (
     <box
       marginTop={margin()}
       paddingLeft={3}
+      onMouseOver={() => props.onClick && setHover(true)}
+      onMouseOut={() => setHover(false)}
+      onMouseUp={() => {
+        if (renderer.getSelection()?.getSelectedText()) return
+        props.onClick?.()
+      }}
       renderBefore={function () {
         const el = this as BoxRenderable
         const parent = el.parent
@@ -2067,11 +2105,18 @@ function InlineTool(props: { icon: string; complete: any; pending: string; child
         }
       }}
     >
-      <text paddingLeft={3} fg={fg()} attributes={denied() ? TextAttributes.STRIKETHROUGH : undefined}>
-        <Show fallback={<>~ {props.pending}</>} when={props.complete}>
-          <span style={{ bold: true }}>{props.icon}</span> {props.children}
-        </Show>
-      </text>
+      <Switch>
+        <Match when={props.spinner}>
+          <Spinner color={fg()} children={props.children} />
+        </Match>
+        <Match when={true}>
+          <text paddingLeft={3} fg={fg()} attributes={denied() ? TextAttributes.STRIKETHROUGH : undefined}>
+            <Show fallback={<>~ {props.pending}</>} when={props.complete}>
+              <span style={{ bold: true }}>{props.icon}</span> {props.children}
+            </Show>
+          </text>
+        </Match>
+      </Switch>
       <Show when={error() && !denied()}>
         <text fg={theme.error}>{error()}</text>
       </Show>
@@ -2248,48 +2293,67 @@ function Task(props: ToolProps<typeof TaskTool>) {
   const { theme } = useTheme()
   const keybind = useKeybind()
   const { navigate } = useRoute()
+  const local = useLocal()
+  const sync = useSync()
 
-  const current = createMemo(() => props.metadata.summary?.findLast((x) => x.state.status !== "pending"))
+  onMount(() => {
+    if (props.metadata.sessionId && !sync.data.message[props.metadata.sessionId]?.length)
+      sync.session.sync(props.metadata.sessionId)
+  })
+
+  const messages = createMemo(() => sync.data.message[props.metadata.sessionId ?? ""] ?? [])
+
+  const tools = createMemo(() => {
+    return messages().flatMap((msg) =>
+      (sync.data.part[msg.id] ?? [])
+        .filter((part): part is ToolPart => part.type === "tool")
+        .map((part) => ({ tool: part.tool, state: part.state })),
+    )
+  })
+
+  const current = createMemo(() => tools().findLast((x) => (x.state as any).title))
+
+  const isRunning = createMemo(() => props.part.state.status === "running")
+
+  const duration = createMemo(() => {
+    const first = messages().find((x) => x.role === "user")?.time.created
+    const assistant = messages().findLast((x) => x.role === "assistant")?.time.completed
+    if (!first || !assistant) return 0
+    return assistant - first
+  })
+
+  const content = createMemo(() => {
+    if (!props.input.description) return ""
+    let content = [`Task ${props.input.description}`]
+
+    if (isRunning() && tools().length > 0) {
+      // content[0] += ` · ${tools().length} toolcalls`
+      if (current()) content.push(`↳ ${Locale.titlecase(current()!.tool)} ${(current()!.state as any).title}`)
+      else content.push(`↳ ${tools().length} toolcalls`)
+    }
+
+    if (props.part.state.status === "completed") {
+      content.push(`└ ${tools().length} toolcalls · ${Locale.duration(duration())}`)
+    }
+
+    return content.join("\n")
+  })
 
   return (
-    <Switch>
-      <Match when={props.metadata.summary?.length}>
-        <BlockTool
-          title={"# " + Locale.titlecase(props.input.subagent_type ?? "unknown") + " Task"}
-          onClick={
-            props.metadata.sessionId
-              ? () => navigate({ type: "session", sessionID: props.metadata.sessionId! })
-              : undefined
-          }
-        >
-          <box>
-            <text style={{ fg: theme.textMuted }}>
-              {props.input.description} ({props.metadata.summary?.length} toolcalls)
-            </text>
-            <Show when={current()}>
-              <text style={{ fg: current()!.state.status === "error" ? theme.error : theme.textMuted }}>
-                └ {Locale.titlecase(current()!.tool)}{" "}
-                {current()!.state.status === "completed" ? current()!.state.title : ""}
-              </text>
-            </Show>
-          </box>
-          <text fg={theme.text}>
-            {keybind.print("session_child_cycle")}
-            <span style={{ fg: theme.textMuted }}> view subagents</span>
-          </text>
-        </BlockTool>
-      </Match>
-      <Match when={true}>
-        <InlineTool
-          icon="◉"
-          pending="Delegating..."
-          complete={props.input.subagent_type ?? props.input.description}
-          part={props.part}
-        >
-          {Locale.titlecase(props.input.subagent_type ?? "unknown")} Task "{props.input.description}"
-        </InlineTool>
-      </Match>
-    </Switch>
+    <InlineTool
+      icon="│"
+      spinner={isRunning()}
+      complete={props.input.description}
+      pending="Delegating..."
+      part={props.part}
+      onClick={() => {
+        if (props.metadata.sessionId) {
+          navigate({ type: "session", sessionID: props.metadata.sessionId })
+        }
+      }}
+    >
+      {content()}
+    </InlineTool>
   )
 }
 
