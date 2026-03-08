@@ -66,6 +66,7 @@ import { DialogTimeline } from "./dialog-timeline"
 import { DialogForkFromTimeline } from "./dialog-fork-from-timeline"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
 import { Sidebar } from "./sidebar"
+import { Header } from "./header"
 import { LANGUAGE_EXTENSIONS } from "@/lsp/language"
 import parsers from "../../../../../../parsers-config.ts"
 import { Clipboard } from "../../util/clipboard"
@@ -1507,6 +1508,9 @@ function SessionPane(props: { sessionID: string; width: number; isSplit: boolean
     <context.Provider value={ctx}>
       <box width={props.width} paddingBottom={1} paddingTop={1} paddingLeft={2} paddingRight={2} gap={1}>
         <Show when={session()}>
+          <Show when={session()?.parentID}>
+            <Header />
+          </Show>
           <scrollbox
             ref={(r) => {
               scroll = r
