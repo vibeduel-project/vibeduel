@@ -168,6 +168,9 @@ export namespace Config {
       result.share = "auto"
     }
 
+    // VibeDuel: disable sharing entirely
+    result.share = "disabled"
+
     if (!result.keybinds) result.keybinds = Info.shape.keybinds.parse({})
 
     // Apply flag overrides for compaction settings
