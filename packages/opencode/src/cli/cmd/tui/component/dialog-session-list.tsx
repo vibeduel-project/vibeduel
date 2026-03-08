@@ -27,116 +27,35 @@ export function DialogSessionList() {
 
   const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
-  const isDuelSession = (session: { title: string }) => session.title.startsWith("Duel: ")
-
   const options = createMemo(() => {
     const today = new Date().toDateString()
-    const sessions = sync.data.session as Array<{
-      id: string
-      title: string
-      time: { created: number; updated: number }
-      parentID?: string
-    }>
-
-    const groupKeyMap = new Map<string, string>()
-
-    const sortedByCreation = sessions.slice().sort((a, b) => a.time.created - b.time.created)
-
-    for (const session of sortedByCreation) {
-      if (isDuelSession(session)) {
-        if (session.parentID) {
-          const parentGroup = groupKeyMap.get(session.parentID)
-          if (parentGroup) {
-            groupKeyMap.set(session.id, parentGroup)
-          } else {
-            const parent = sessions.find((s) => s.id === session.parentID)
-            if (parent && isDuelSession(parent)) {
-              groupKeyMap.set(session.id, session.id)
-              groupKeyMap.set(session.parentID, session.id)
-            } else {
-              groupKeyMap.set(session.id, session.id)
-            }
-          }
-        } else {
-          groupKeyMap.set(session.id, session.id)
-        }
-      }
-    }
-
-    const titleToEarliestRoot = new Map<string, string>()
-    for (const session of sessions) {
-      if (isDuelSession(session)) {
-        const groupKey = groupKeyMap.get(session.id)
-        if (groupKey) {
-          const existing = titleToEarliestRoot.get(session.title)
-          if (!existing || existing.localeCompare(groupKey) > 0) {
-            titleToEarliestRoot.set(session.title, groupKey)
-          }
-        }
-      }
-    }
-
-    for (const session of sessions) {
-      if (isDuelSession(session)) {
-        const earliestRoot = titleToEarliestRoot.get(session.title)
-        if (earliestRoot) {
-          groupKeyMap.set(session.id, earliestRoot)
-        }
-      }
-    }
-
-    const groupLatestMap = new Map<string, string>()
-    const groupToSessions = new Map<string, typeof sessions>()
-    for (const session of sessions) {
-      const groupKey = groupKeyMap.get(session.id)
-      if (groupKey) {
-        const group = groupToSessions.get(groupKey) ?? []
-        group.push(session)
-        groupToSessions.set(groupKey, group)
-      }
-    }
-
-    for (const [groupKey, groupSessions] of groupToSessions) {
-      const sorted = groupSessions.sort((a, b) => b.time.updated - a.time.updated)
-      groupLatestMap.set(groupKey, sorted[0]?.id)
-    }
-
-    const result = sessions
-      .map((session) => {
-        const groupKey = groupKeyMap.get(session.id)
-        const latestId = groupKey ? groupLatestMap.get(groupKey) : undefined
-        const isIndent = groupKey && latestId !== session.id
-        const date = new Date(session.time.updated)
+    return sync.data.session
+      .filter((x) => x.parentID === undefined)
+      .toSorted((a, b) => b.time.updated - a.time.updated)
+      .map((x) => {
+        const date = new Date(x.time.updated)
         let category = date.toDateString()
         if (category === today) {
           category = "Today"
         }
+        const isDeleting = toDelete() === x.id
+        const status = sync.data.session_status?.[x.id]
+        const isWorking = status?.type === "busy"
+        const msgCount = (sync.data.message[x.id] ?? []).filter((m) => m.role === "user").length
         return {
-          id: session.id,
-          title: session.title,
-          time: session.time.updated,
+          title: isDeleting ? `Press ${deleteKeybind} again to confirm` : x.title,
+          bg: isDeleting ? theme.error : undefined,
+          value: x.id,
           category,
-          isDeleting: toDelete() === session.id,
-          isWorking: sync.data.session_status?.[session.id]?.type === "busy",
-          indent: isIndent,
+          footer: `${msgCount} msg · ${Locale.time(x.time.updated)}`,
+          gutter: isWorking ? (
+            <Show when={kv.get("animations_enabled", true)} fallback={<text fg={theme.textMuted}>[⋯]</text>}>
+              <spinner frames={spinnerFrames} interval={80} color={theme.primary} />
+            </Show>
+          ) : undefined,
         }
       })
-      .sort((a, b) => b.time - a.time)
       .slice(0, 150)
-      .map((x) => ({
-        title: x.isDeleting ? `Press ${deleteKeybind} again to confirm` : (x.indent ? "  " : "") + x.title,
-        bg: x.isDeleting ? theme.error : undefined,
-        value: x.id,
-        category: x.category,
-        footer: Locale.time(x.time),
-        gutter: x.isWorking ? (
-          <Show when={kv.get("animations_enabled", true)} fallback={<text fg={theme.textMuted}>[⋯]</text>}>
-            <spinner frames={spinnerFrames} interval={80} color={theme.primary} />
-          </Show>
-        ) : undefined,
-      }))
-
-    return result
   })
 
   onMount(() => {

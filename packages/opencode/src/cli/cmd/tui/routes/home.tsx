@@ -319,7 +319,7 @@ export function Home() {
               duelLog.info("home onSubmit", { sessionID, duelSessionId, isDuel: !!duelSessionId })
               if (duelSessionId) {
                 try {
-                  const rightSession = await sdk.client.session.create({})
+                  const rightSession = await sdk.client.session.create({ parentID: sessionID })
                   if (rightSession.data?.id) {
                     const rightSessionID = rightSession.data.id
                     duelLog.info("home forking into split", {

@@ -587,7 +587,6 @@ export function Session() {
                   visible={true}
                   broadcastSessionIDs={route.rightSessionID ? [route.rightSessionID] : undefined}
                   compareMode={local.model.current()?.modelID === "duel"}
-                  duelSessionId={route.duelSessionId}
                   skipAutoSend={!!pendingForkWinner()}
                   disabled={promptDisabled()}
                   focused={!promptDisabled()}
@@ -664,14 +663,12 @@ export function Session() {
                             type: "session",
                             sessionID: route.sessionID,
                             rightSessionID: forkedID,
-                            duelSessionId,
                           })
                         } else {
                           navigate({
                             type: "session",
                             sessionID: forkedID,
                             rightSessionID: route.rightSessionID,
-                            duelSessionId,
                           })
                         }
                       }

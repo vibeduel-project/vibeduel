@@ -161,8 +161,10 @@ export namespace SessionPrompt {
     const message = await createUserMessage(input)
     await Session.touch(input.sessionID)
 
-    // Update session title from first user prompt (pass duelSessionId to detect duel mode)
-    await Session.updateTitleFromFirstMessage(input.sessionID, message.parts, !!input.duelSessionId)
+    // Update session title from first user prompt (skip right-side duel sessions)
+    if (input.duelSide !== "right") {
+      await Session.updateTitleFromFirstMessage(input.sessionID, message.parts)
+    }
 
     log.info("latency: after message creation", { timestamp: Date.now(), sessionID: input.sessionID })
 

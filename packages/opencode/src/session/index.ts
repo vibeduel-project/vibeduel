@@ -7,8 +7,6 @@ import { Config } from "../config/config"
 import { Flag } from "../flag/flag"
 import { Identifier } from "../id/id"
 import { Installation } from "../installation"
-import { getDuel } from "../duel"
-
 import { Storage } from "../storage/storage"
 import { Log } from "../util/log"
 import { MessageV2 } from "./message-v2"
@@ -27,23 +25,16 @@ export namespace Session {
   const parentTitlePrefix = "New session - "
   const forkTitlePrefix = "Fork - "
 
-  function createDefaultTitle(options: { isFork?: boolean; isDuel?: boolean } = {}) {
-    const { isFork = false, isDuel = false } = options
-    if (isDuel) {
-      return "Duel: "
-    }
+  function createDefaultTitle(options: { isFork?: boolean } = {}) {
+    const { isFork = false } = options
     const prefix = isFork ? forkTitlePrefix : parentTitlePrefix
     return prefix + new Date().toISOString()
   }
 
   export function isDefaultTitle(title: string) {
     return new RegExp(
-      `^(${parentTitlePrefix}|${forkTitlePrefix}|Duel: )\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$`,
+      `^(${parentTitlePrefix}|${forkTitlePrefix})\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$`,
     ).test(title)
-  }
-
-  export function isDuelTitle(title: string) {
-    return title.startsWith("Duel: ")
   }
 
   /**
@@ -77,7 +68,6 @@ export namespace Session {
   export async function updateTitleFromFirstMessage(
     sessionID: string,
     parts: { type: string; text?: string; filename?: string; synthetic?: boolean }[],
-    isDuel?: boolean,
   ) {
     const session = await get(sessionID)
     if (!session) {
@@ -85,28 +75,9 @@ export namespace Session {
       return
     }
 
-    // Detect if in duel mode: from explicit flag OR from title prefix
-    const isDuelFromTitle = isDuelTitle(session.title) || session.title === "Duel: "
-    const inDuelMode = isDuel ?? isDuelFromTitle
-
-    // Skip if already has custom title (not default timestamp-based or "Duel: " prefix)
-    // Only update title if it's still the initial default (timestamp-based) or "Duel: " without prompt
+    // Only update if title is still the default (has timestamp)
     const hasTimestamp = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(session.title)
-    const isDuelPrefix = session.title === "Duel: "
-
-    log.info("title update check", {
-      sessionID,
-      title: session.title,
-      hasTimestamp,
-      isDuelPrefix,
-      isDefaultTitle: isDefaultTitle(session.title),
-      parentID: session.parentID,
-      inDuelMode,
-    })
-
-    // Only update if title is still the default (has timestamp) or "Duel: " prefix
-    // Once title has a real prompt, never update it again
-    if (!hasTimestamp && !isDuelPrefix) {
+    if (!hasTimestamp) {
       log.info("title update skipped: already has custom title", { sessionID, title: session.title })
       return
     }
@@ -125,27 +96,11 @@ export namespace Session {
       return
     }
 
-    // Determine title format based on session type
-    const isFork = !!session.parentID
-
-    log.info("title format decision", { sessionID, isFork, inDuelMode, derivedTitle })
-
-    let newTitle: string
-    if (inDuelMode) {
-      newTitle = "Duel: " + derivedTitle
-    } else if (isFork) {
-      // Fork: truncate to 30 chars + timestamp
-      const truncated = derivedTitle.length > 30 ? derivedTitle.substring(0, 27) + "..." : derivedTitle
-      newTitle = "Fork: " + truncated + " - " + new Date().toISOString()
-    } else {
-      newTitle = derivedTitle
-    }
-
     await update(sessionID, (draft) => {
-      draft.title = newTitle
+      draft.title = derivedTitle
     })
 
-    log.info("title updated from prompt", { sessionID, title: newTitle })
+    log.info("title updated from prompt", { sessionID, title: derivedTitle })
   }
 
   export const Info = z
@@ -259,14 +214,10 @@ export namespace Session {
       messageID: Identifier.schema("message").optional(),
     }),
     async (input) => {
-      // Check if source session is in duel mode
-      const isDuel = !!getDuel(input.sessionID)
-
-      log.info("fork creating", { sourceSessionID: input.sessionID, isDuel })
+      log.info("fork creating", { sourceSessionID: input.sessionID })
       const session = await createNext({
         directory: Instance.directory,
-        parentID: input.sessionID, // Mark as fork/child session
-        isDuel,
+        parentID: input.sessionID,
       })
       const msgs = await messages({ sessionID: input.sessionID })
       for (const msg of msgs) {
@@ -302,7 +253,6 @@ export namespace Session {
     parentID?: string
     directory: string
     permission?: PermissionNext.Ruleset
-    isDuel?: boolean
   }) {
     const isFork = !!input.parentID
     const result: Info = {
@@ -311,7 +261,7 @@ export namespace Session {
       projectID: Instance.project.id,
       directory: input.directory,
       parentID: input.parentID,
-      title: input.title ?? createDefaultTitle({ isFork, isDuel: input.isDuel }),
+      title: input.title ?? createDefaultTitle({ isFork }),
       permission: input.permission,
       time: {
         created: Date.now(),
