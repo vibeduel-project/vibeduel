@@ -65,6 +65,9 @@ export type PromptRef = {
 
 // Remember the last single model so shift+tab can toggle back from duel
 let lastSingleModel: { providerID: string; modelID: string } | undefined
+// Track whether duel was auto-entered due to low credits
+export let autoDuelPreviousModel: { providerID: string; modelID: string } | undefined
+export function clearAutoDuelPreviousModel() { autoDuelPreviousModel = undefined }
 
 const PLACEHOLDERS = ["Fix a TODO in the codebase", "What is the tech stack of this project?", "Fix broken tests"]
 
@@ -616,12 +619,16 @@ export function Prompt(props: PromptProps) {
       return
     }
     if (credits() !== null && credits()! <= 10 && !props.compareMode) {
-      Log.Default.info("Prompt.submit blocked: no credits remaining", { credits: credits() })
+      const currentModel = local.model.current()
+      if (currentModel) autoDuelPreviousModel = { providerID: currentModel.providerID, modelID: currentModel.modelID }
+      Log.Default.info("Prompt.submit: low credits, switching to duel mode", { credits: credits(), previousModel: autoDuelPreviousModel })
       toast.show({
-        message: "Low credits remaining. Use duel mode to earn more.",
+        message: "Low credits remaining. Automatically entering duel mode.",
         variant: "error",
         duration: 5000,
       })
+      local.model.set({ providerID: "vibeduel", modelID: "duel" })
+      setTimeout(() => submit(), 0)
       return
     }
     if (autocomplete?.visible) {

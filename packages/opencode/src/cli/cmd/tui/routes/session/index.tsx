@@ -27,7 +27,7 @@ import {
   TextAttributes,
   type RGBA,
 } from "@opentui/core"
-import { Prompt, type PromptRef } from "@tui/component/prompt"
+import { Prompt, type PromptRef, autoDuelPreviousModel, clearAutoDuelPreviousModel } from "@tui/component/prompt"
 import { Spinner } from "../../component/spinner"
 import type { AssistantMessage, Part, ToolPart, UserMessage, TextPart, ReasoningPart } from "@opencode-ai/sdk/v2"
 import { useLocal } from "@tui/context/local"
@@ -258,7 +258,13 @@ export function Session() {
   const promptPermissions = createMemo(() => {
     const s = promptSession()
     if (!s) return []
-    return sync.data.permission[promptSessionID()] ?? []
+    if (s.parentID) return sync.data.permission[promptSessionID()] ?? []
+    const parentID = s.parentID ?? s.id
+    const rightID = route.rightSessionID
+    const children = sync.data.session
+      .filter((x) => (x.parentID === parentID || x.id === parentID) && x.id !== rightID)
+      .toSorted((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    return children.flatMap((x) => sync.data.permission[x.id] ?? [])
   })
 
   const showPrompt = createMemo(() => {
@@ -387,6 +393,16 @@ export function Session() {
     setPendingForkWinner(side)
     setAwaitingVote(false)
     setVoteInFlight(false)
+
+    if (autoDuelPreviousModel) {
+      const model = autoDuelPreviousModel
+      clearAutoDuelPreviousModel()
+      duelLog.info("auto-duel: scheduling switch back to previous model", { model })
+      setTimeout(() => {
+        duelLog.info("auto-duel: switching back to previous model", { model })
+        local.model.set(model)
+      }, 2000)
+    }
   }
 
   const enterDuel = async () => {
@@ -762,7 +778,8 @@ function SessionPane(props: {
   const permissions = createMemo(() => {
     const s = session()
     if (!s) return []
-    return sync.data.permission[props.sessionID] ?? []
+    if (s.parentID) return sync.data.permission[props.sessionID] ?? []
+    return children().flatMap((x) => sync.data.permission[x.id] ?? [])
   })
 
   const pending = createMemo(() => {
@@ -1456,8 +1473,9 @@ function SessionPane(props: {
       value: "session.child.next",
       keybind: "session_child_cycle",
       category: "Session",
-      enabled: false,
+      enabled: !!session()?.parentID,
       onSelect: (dialog) => {
+        moveChild(1)
         dialog.clear()
       },
     },
@@ -1466,8 +1484,9 @@ function SessionPane(props: {
       value: "session.child.previous",
       keybind: "session_child_cycle_reverse",
       category: "Session",
-      enabled: false,
+      enabled: !!session()?.parentID,
       onSelect: (dialog) => {
+        moveChild(-1)
         dialog.clear()
       },
     },
@@ -1476,8 +1495,15 @@ function SessionPane(props: {
       value: "session.parent",
       keybind: "session_parent",
       category: "Session",
-      enabled: false,
+      enabled: !!session()?.parentID,
       onSelect: (dialog) => {
+        const parentID = session()?.parentID
+        if (parentID) {
+          navigate({
+            type: "session",
+            sessionID: parentID,
+          })
+        }
         dialog.clear()
       },
     },
