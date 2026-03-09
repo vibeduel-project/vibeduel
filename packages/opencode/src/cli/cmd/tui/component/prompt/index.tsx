@@ -1083,6 +1083,10 @@ export function Prompt(props: PromptProps) {
                 // Shift+Tab: toggle between duel and single model mode
                 if (e.shift && e.name === "tab") {
                   e.preventDefault()
+                  if (status().type !== "idle") {
+                    toast.show({ message: "Toggle duel when model is done running.", variant: "warning", duration: 2000 })
+                    return
+                  }
                   const current = local.model.current()
                   if (current?.modelID === "duel") {
                     const target =

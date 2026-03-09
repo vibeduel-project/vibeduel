@@ -1,1 +1,4 @@
-your api key lives in ~/.local/share/vibeduel/auth.json
+- your api key lives in ~/.local/share/vibeduel/auth.json
+- the box for each agent is called a SessionPane
+- the component where you type your prompt in ("prompt box") is called Prompt
+- the place where the SessionPanes and Prompt are is called the Session formally, but you can call it the workspace/viewport

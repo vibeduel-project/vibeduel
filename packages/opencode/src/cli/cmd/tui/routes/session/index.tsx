@@ -709,6 +709,7 @@ export function Session() {
             </box>
           </Show>
         </box>
+        <Toast />
       </box>
     </context.Provider>
   )
@@ -1719,7 +1720,6 @@ function SessionPane(props: {
             </Show>
           </box>
         </Show>
-        <Toast />
       </box>
       <Show when={sidebarVisible()}>
         <Sidebar sessionID={props.sessionID} />
