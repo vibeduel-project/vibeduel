@@ -599,12 +599,20 @@ export function Prompt(props: PromptProps) {
       broadcastCount: props.broadcastSessionIDs?.length
     })
 
-    // Refresh credits after submitting
-    fetchCredits()
+    await fetchCredits()
 
     if (props.disabled) {
       Log.Default.debug("Prompt.submit blocked: disabled is true")
       toast.show({ message: "Debug: Submit blocked (disabled=true)", variant: "error" })
+      return
+    }
+    if (credits() !== null && credits()! <= 10 && !props.compareMode) {
+      Log.Default.info("Prompt.submit blocked: no credits remaining", { credits: credits() })
+      toast.show({
+        message: "Low credits remaining. Use duel mode to earn more.",
+        variant: "error",
+        duration: 5000,
+      })
       return
     }
     if (autocomplete?.visible) {
