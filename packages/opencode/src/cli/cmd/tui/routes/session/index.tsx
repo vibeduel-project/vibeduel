@@ -372,8 +372,8 @@ export function Session() {
         modelB: result.model_b,
         ratingUpdate: result.rating_update,
       })
-      // left="a", right="b" — strip "openai/" prefix if present
-      const cleanName = (name: string) => name.replace(/^openai\//, "")
+      // left="a", right="b" — strip provider prefix if present
+      const cleanName = (name: string) => name.replace(/^[^/]+\//, "")
       setModelReveal({
         left: cleanName(result.model_a),
         right: cleanName(result.model_b),
