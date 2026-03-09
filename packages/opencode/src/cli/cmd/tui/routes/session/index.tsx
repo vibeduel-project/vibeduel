@@ -195,7 +195,6 @@ export function Session() {
   const [activeSessionID, setActiveSessionID] = createSignal(route.sessionID)
 
   // Ensure active session is valid (defaults to route.sessionID if invalid)
-  // Ensure active session is valid (defaults to route.sessionID if invalid)
   createEffect(() => {
     if (activeSessionID() !== route.sessionID && activeSessionID() !== route.rightSessionID) {
       setActiveSessionID(route.sessionID)
@@ -372,8 +371,8 @@ export function Session() {
         modelB: result.model_b,
         ratingUpdate: result.rating_update,
       })
-      // left="a", right="b" — strip "openai/" prefix if present
-      const cleanName = (name: string) => name.replace(/^openai\//, "")
+      // left="a", right="b" — strip provider prefix if present
+      const cleanName = (name: string) => name.replace(/^[^/]+\//, "")
       setModelReveal({
         left: cleanName(result.model_a),
         right: cleanName(result.model_b),
