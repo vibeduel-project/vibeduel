@@ -6,6 +6,7 @@ import {
   For,
   Match,
   on,
+  onCleanup,
   onMount,
   Show,
   Switch,
@@ -161,9 +162,34 @@ export function Session() {
   })
 
   const isSplit = createMemo(() => !!route.rightSessionID)
-  const paneWidth = createMemo(() => {
+  const SPLIT_ANIMATION_FRAMES = 6
+  const SPLIT_ANIMATION_INTERVAL = 30
+  const [splitAnimProgress, setSplitAnimProgress] = createSignal(isSplit() ? 1 : 0)
+  createEffect(() => {
+    const target = isSplit() ? 1 : 0
+    if (splitAnimProgress() === target) return
+    const step = isSplit() ? 1 / SPLIT_ANIMATION_FRAMES : -1 / SPLIT_ANIMATION_FRAMES
+    const timer = setInterval(() => {
+      setSplitAnimProgress((prev) => {
+        const next = prev + step
+        if ((step > 0 && next >= 1) || (step < 0 && next <= 0)) {
+          clearInterval(timer)
+          return target
+        }
+        return next
+      })
+    }, SPLIT_ANIMATION_INTERVAL)
+    onCleanup(() => clearInterval(timer))
+  })
+  const leftPaneWidth = createMemo(() => {
     const fullWidth = dimensions().width
-    return isSplit() ? Math.floor(fullWidth * 0.5) : fullWidth
+    const halfWidth = Math.floor(fullWidth * 0.5)
+    return Math.round(fullWidth - (fullWidth - halfWidth) * splitAnimProgress())
+  })
+  const rightPaneWidth = createMemo(() => {
+    const fullWidth = dimensions().width
+    const halfWidth = Math.floor(fullWidth * 0.5)
+    return Math.max(1, Math.round(halfWidth * splitAnimProgress()))
   })
 
   // Track which session pane is currently active (has focus)
@@ -477,17 +503,17 @@ export function Session() {
           <box flexDirection="row" flexGrow={1}>
             <SessionPane
               sessionID={route.sessionID}
-              width={paneWidth()}
+              width={leftPaneWidth()}
               isSplit={isSplit()}
               side="left"
               controlSide={controlSide()}
               otherSessionID={route.rightSessionID}
               onScrollToBottom={(fn) => setScrollToBottomLeft(() => fn)}
             />
-            <Show when={isSplit() && route.rightSessionID}>
+            <Show when={splitAnimProgress() > 0 && route.rightSessionID}>
               <SessionPane
                 sessionID={route.rightSessionID!}
-                width={paneWidth()}
+                width={rightPaneWidth()}
                 isSplit={isSplit()}
                 side="right"
                 controlSide={controlSide()}
