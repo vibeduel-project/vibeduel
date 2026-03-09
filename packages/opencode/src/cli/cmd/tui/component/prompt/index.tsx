@@ -1293,7 +1293,7 @@ export function Prompt(props: PromptProps) {
               {/* Right side: token context + credits */}
               <box flexDirection="row" gap={2}>
                 <text fg={theme.textMuted} wrapMode="none">{tokenContext() ?? ""}</text>
-                <text fg={creditsBlink() ? theme.warning : theme.textMuted} bold={creditsBlink()} wrapMode="none">Credits: {credits() !== null ? `${credits()}/250` : "—"}</text>
+                <text fg={creditsBlink() ? theme.warning : theme.textMuted} wrapMode="none">Credits: {credits() !== null ? `${credits()}/250` : "—"}</text>
               </box>
             </box>
           </box>
