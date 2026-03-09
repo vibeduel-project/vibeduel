@@ -1809,7 +1809,18 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
   const local = useLocal()
   const { theme } = useTheme()
   const sync = useSync()
+  const toast = useToast()
   const messages = createMemo(() => sync.data.message[props.message.sessionID] ?? [])
+
+  createEffect(() => {
+    if (props.message.error) {
+      toast.show({
+        message: "Model returned error — consider using a different model temporarily.",
+        variant: "error",
+        duration: 5000,
+      })
+    }
+  })
 
   const final = createMemo(() => {
     return props.message.finish && !["tool-calls", "unknown"].includes(props.message.finish)

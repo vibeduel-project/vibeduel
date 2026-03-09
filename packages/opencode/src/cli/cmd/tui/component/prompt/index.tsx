@@ -136,6 +136,15 @@ export function Prompt(props: PromptProps) {
   const dialog = useDialog()
   const toast = useToast()
   const status = createMemo(() => sync.data.session_status?.[props.sessionID ?? ""] ?? { type: "idle" })
+  createEffect(() => {
+    if (status().type === "retry") {
+      toast.show({
+        message: "Model returned error — consider using a different model temporarily.",
+        variant: "error",
+        duration: 5000,
+      })
+    }
+  })
   const history = usePromptHistory()
   const stash = usePromptStash()
   const command = useCommandDialog()
