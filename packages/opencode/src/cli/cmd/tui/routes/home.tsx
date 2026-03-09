@@ -249,14 +249,14 @@ export function Home() {
                     .map((item, index) => (
                       <box flexDirection="row" justifyContent="space-between" alignItems="center">
                         <box flexDirection="row" gap={2} alignItems="center" width={25}>
-                          {/* Conditional coloring based on rank */}
+                          {/* Conditional coloring based on item.rank */}
                           <text
                             fg={
-                              index === 0
+                              item.rank === 1
                                 ? theme.primary
-                                : index === 1
+                                : item.rank === 2
                                   ? theme.secondary
-                                  : index === 2
+                                  : item.rank === 3
                                     ? theme.accent
                                     : theme.text
                             }
@@ -265,11 +265,11 @@ export function Home() {
                           </text>
                           <text
                             fg={
-                              index === 0
+                              item.rank === 1
                                 ? theme.primary
-                                : index === 1
+                                : item.rank === 2
                                   ? theme.secondary
-                                  : index === 2
+                                  : item.rank === 3
                                     ? theme.accent
                                     : theme.text
                             }
