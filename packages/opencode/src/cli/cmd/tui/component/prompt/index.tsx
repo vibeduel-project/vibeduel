@@ -157,6 +157,7 @@ export function Prompt(props: PromptProps) {
 
   // Credits fetching
   const [credits, setCredits] = createSignal<number | null>(null)
+  const [creditsBlink, setCreditsBlink] = createSignal(false)
   async function fetchCredits() {
     const baseURL = process.env["VIBEDUEL_BASE_URL"] ?? "https://api.vibeduel.ai/v1"
     const apiKey = process.env["VIBEDUEL_API_KEY"]
@@ -170,6 +171,29 @@ export function Prompt(props: PromptProps) {
     }
   }
   fetchCredits()
+
+  // Blink credits counter when between 50 and 75 after model finishes generating
+  let prevStatusType = status().type
+  createEffect(() => {
+    const currentType = status().type
+    const wasGenerating = prevStatusType !== "idle"
+    prevStatusType = currentType
+    if (wasGenerating && currentType === "idle") {
+      const c = credits()
+      if (c !== null && c > 50 && c <= 55) {
+        Log.Default.info("Credits blink triggered", { credits: c })
+        let blinkCount = 0
+        const blinkTimer = setInterval(() => {
+          setCreditsBlink((prev) => !prev)
+          blinkCount++
+          if (blinkCount >= 5) {
+            clearInterval(blinkTimer)
+            setCreditsBlink(false)
+          }
+        }, 250)
+      }
+    }
+  })
 
   // Token context calculation
   const messages = createMemo(() => props.sessionID ? (sync.data.message[props.sessionID] ?? []) : [])
@@ -618,7 +642,7 @@ export function Prompt(props: PromptProps) {
       toast.show({ message: "Debug: Submit blocked (disabled=true)", variant: "error" })
       return
     }
-    if (credits() !== null && credits()! <= 10 && !props.compareMode) {
+    if (credits() !== null && credits()! <= 50 && !props.compareMode) {
       const currentModel = local.model.current()
       if (currentModel) autoDuelPreviousModel = { providerID: currentModel.providerID, modelID: currentModel.modelID }
       Log.Default.info("Prompt.submit: low credits, switching to duel mode", { credits: credits(), previousModel: autoDuelPreviousModel })
@@ -1269,7 +1293,7 @@ export function Prompt(props: PromptProps) {
               {/* Right side: token context + credits */}
               <box flexDirection="row" gap={2}>
                 <text fg={theme.textMuted} wrapMode="none">{tokenContext() ?? ""}</text>
-                <text fg={theme.textMuted} wrapMode="none">Credits: {credits() !== null ? `${credits()}/250` : "—"}</text>
+                <text fg={creditsBlink() ? theme.warning : theme.textMuted} bold={creditsBlink()} wrapMode="none">Credits: {credits() !== null ? `${credits()}/250` : "—"}</text>
               </box>
             </box>
           </box>
