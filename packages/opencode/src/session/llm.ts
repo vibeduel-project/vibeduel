@@ -1,3 +1,4 @@
+import { DUEL_WORKTREE_BASE } from "@/duel"
 import { Provider } from "@/provider/provider"
 import { Log } from "@/util/log"
 import {
@@ -126,7 +127,7 @@ export namespace LLM {
 
     const tools = await resolveTools(input)
 
-    const DUEL_PATH_LEAK = "/tmp/opencode-duel"
+    const DUEL_PATH_LEAK = DUEL_WORKTREE_BASE
     for (const msg of input.messages) {
       const content = JSON.stringify(msg)
       if (content.includes(DUEL_PATH_LEAK)) {

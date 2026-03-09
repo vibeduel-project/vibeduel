@@ -3,8 +3,12 @@
 
 import { Log } from "@/util/log"
 import { $ } from "bun"
+import os from "os"
+import path from "path"
 
 const log = Log.create({ service: "duel" })
+
+export const DUEL_WORKTREE_BASE = path.join(os.homedir(), ".local", "share", "vibeduel", "worktree")
 
 // Maps opencode sessionID -> backend duel session ID
 const activeDuels = new Map<string, string>()
@@ -47,8 +51,8 @@ export function clearDuelWorktree(sessionID: string): void {
 }
 
 export async function createDuelWorktrees(duelId: string, repoPath: string): Promise<{ left: string; right: string }> {
-  const left = `/tmp/opencode-duel-${duelId}/left`
-  const right = `/tmp/opencode-duel-${duelId}/right`
+  const left = `${DUEL_WORKTREE_BASE}/${duelId}/left`
+  const right = `${DUEL_WORKTREE_BASE}/${duelId}/right`
 
   if (createdWorktrees.has(duelId)) {
     log.info("createDuelWorktrees: already exist, reusing", { duelId, left, right })
@@ -75,7 +79,7 @@ async function doCreateWorktrees(duelId: string, repoPath: string, left: string,
   log.info("createDuelWorktrees: creating new worktrees", { duelId, repoPath, left, right })
 
   // Clean up stale worktrees from previous app runs
-  const baseDir = `/tmp/opencode-duel-${duelId}`
+  const baseDir = `${DUEL_WORKTREE_BASE}/${duelId}`
   log.info("wt_latency: before stale cleanup check", { ts: Date.now(), duelId })
   if (await $`test -d ${baseDir}`.quiet().nothrow().then(r => r.exitCode === 0)) {
     log.info("createDuelWorktrees: cleaning up stale worktrees", { duelId, baseDir })
@@ -148,7 +152,7 @@ async function doCreateWorktrees(duelId: string, repoPath: string, left: string,
 }
 
 export async function applyWinnerWorktree(duelId: string, winningSide: "left" | "right", repoPath: string): Promise<void> {
-  const worktree = `/tmp/opencode-duel-${duelId}/${winningSide}`
+  const worktree = `${DUEL_WORKTREE_BASE}/${duelId}/${winningSide}`
   log.info("applyWinnerWorktree: copying winner changes back", { duelId, winningSide, worktree, repoPath })
 
   // Only copy files that the model actually changed (diff against HEAD),
