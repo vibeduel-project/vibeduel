@@ -76,7 +76,7 @@ export function Header() {
   const { theme } = useTheme()
 
   // For subagent sessions (when parentID exists)
-  const isSubagent = createMemo(() => !!session()?.parentID)
+  const isSubagent = createMemo(() => false)
 
   // Hover states for buttons
   const [parentHover, setParentHover] = createSignal(false)

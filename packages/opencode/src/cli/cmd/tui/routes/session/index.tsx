@@ -188,8 +188,7 @@ export function Session() {
   })
   const rightPaneWidth = createMemo(() => {
     const fullWidth = dimensions().width
-    const halfWidth = Math.floor(fullWidth * 0.5)
-    return Math.max(1, Math.round(halfWidth * splitAnimProgress()))
+    return Math.max(1, fullWidth - leftPaneWidth())
   })
 
   // Track which session pane is currently active (has focus)
@@ -268,8 +267,6 @@ export function Session() {
   })
 
   const showPrompt = createMemo(() => {
-    const s = promptSession()
-    if (!route.rightSessionID && s?.parentID) return false
     return promptPermissions().length === 0
   })
   // Check if the last assistant message in a session is done (has time.completed set)
@@ -1712,11 +1709,6 @@ function SessionPane(props: {
           </box>
         </Show>
         <Toast />
-        <Show when={session()?.parentID}>
-          <box marginTop={-1} marginBottom={1}>
-            <Header />
-          </box>
-        </Show>
       </box>
       <Show when={sidebarVisible()}>
         <Sidebar sessionID={props.sessionID} />
