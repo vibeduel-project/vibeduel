@@ -229,7 +229,7 @@ export namespace Session {
           ...msg.info,
           sessionID: session.id,
           id: newID,
-          parentID: msg.info.parentID ? (idMap.get(msg.info.parentID) ?? msg.info.parentID) : msg.info.parentID,
+          ...("parentID" in msg.info && msg.info.parentID ? { parentID: idMap.get(msg.info.parentID) ?? msg.info.parentID } : {}),
         })
 
         for (const part of msg.parts) {

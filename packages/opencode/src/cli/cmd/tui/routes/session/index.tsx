@@ -258,12 +258,7 @@ export function Session() {
   const promptPermissions = createMemo(() => {
     const s = promptSession()
     if (!s) return []
-    if (s.parentID) return sync.data.permission[promptSessionID()] ?? []
-    const parentID = s.parentID ?? s.id
-    const children = sync.data.session
-      .filter((x) => x.parentID === parentID || x.id === parentID)
-      .toSorted((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
-    return children.flatMap((x) => sync.data.permission[x.id] ?? [])
+    return sync.data.permission[promptSessionID()] ?? []
   })
 
   const showPrompt = createMemo(() => {
@@ -767,8 +762,7 @@ function SessionPane(props: {
   const permissions = createMemo(() => {
     const s = session()
     if (!s) return []
-    if (s.parentID) return sync.data.permission[props.sessionID] ?? []
-    return children().flatMap((x) => sync.data.permission[x.id] ?? [])
+    return sync.data.permission[props.sessionID] ?? []
   })
 
   const pending = createMemo(() => {
@@ -1462,9 +1456,8 @@ function SessionPane(props: {
       value: "session.child.next",
       keybind: "session_child_cycle",
       category: "Session",
-      enabled: !!session()?.parentID,
+      enabled: false,
       onSelect: (dialog) => {
-        moveChild(1)
         dialog.clear()
       },
     },
@@ -1473,9 +1466,8 @@ function SessionPane(props: {
       value: "session.child.previous",
       keybind: "session_child_cycle_reverse",
       category: "Session",
-      enabled: !!session()?.parentID,
+      enabled: false,
       onSelect: (dialog) => {
-        moveChild(-1)
         dialog.clear()
       },
     },
@@ -1484,15 +1476,8 @@ function SessionPane(props: {
       value: "session.parent",
       keybind: "session_parent",
       category: "Session",
-      enabled: !!session()?.parentID,
+      enabled: false,
       onSelect: (dialog) => {
-        const parentID = session()?.parentID
-        if (parentID) {
-          navigate({
-            type: "session",
-            sessionID: parentID,
-          })
-        }
         dialog.clear()
       },
     },
