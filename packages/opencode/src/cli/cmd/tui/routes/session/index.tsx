@@ -195,7 +195,6 @@ export function Session() {
   const [activeSessionID, setActiveSessionID] = createSignal(route.sessionID)
 
   // Ensure active session is valid (defaults to route.sessionID if invalid)
-  // Ensure active session is valid (defaults to route.sessionID if invalid)
   createEffect(() => {
     if (activeSessionID() !== route.sessionID && activeSessionID() !== route.rightSessionID) {
       setActiveSessionID(route.sessionID)
