@@ -279,12 +279,10 @@ export function Home() {
                               : (() => {
                                   const name = item.model.includes("/")
                                     ? (() => {
-                                        const parts = item.model.split("/")[1]
-                                        // Strip trailing part like -A35B from Qwen3-Coder-480B-A35B
-                                        return parts.includes("-") &&
-                                          /\d+B$/.test(parts.split("-").slice(0, -1).join("-"))
-                                          ? parts.split("-").slice(0, -1).join("-")
-                                          : parts
+                                        const modelPart = item.model.split("/")[1]
+                                        // Keep max 3 segments for cleaner display
+                                        // e.g., Qwen3-Coder-480B from Qwen3-Coder-480B-A35B-Instruct
+                                        return modelPart.split("-").slice(0, 3).join("-")
                                       })()
                                     : item.model
                                   return index < 3 ? <strong>{name}</strong> : name
