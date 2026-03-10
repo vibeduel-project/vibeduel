@@ -697,6 +697,7 @@ export function Session() {
                   visible={true}
                   broadcastSessionIDs={route.opponentSessionIDs?.length && !awaitingVote() ? route.opponentSessionIDs : undefined}
                   compareMode={local.model.current()?.modelID === "duel" && !awaitingVote()}
+                  awaitingVote={awaitingVote()}
                   skipAutoSend={!!pendingForkWinner()}
                   duelSessionId={awaitingVote() ? currentDuelId() : undefined}
                   disabled={promptDisabled()}

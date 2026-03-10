@@ -47,6 +47,8 @@ export type PromptProps = {
   syncMode?: 'left-to-right' | 'right-to-left'
   // When true, Prompt does NOT send messages itself — onSubmit is responsible for sending.
   skipAutoSend?: boolean
+  // When true, a duel is active and the user must vote before toggling duel mode
+  awaitingVote?: boolean
   // Existing duel session ID for follow-up messages (reuses the round's duel ID)
   duelSessionId?: string
   onSubmit?: (sessionID: string, prompt: PromptInfo, duelSessionId?: string) => void
@@ -1095,6 +1097,10 @@ export function Prompt(props: PromptProps) {
                   e.preventDefault()
                   if (status().type !== "idle") {
                     toast.show({ message: "Toggle duel when model is done running.", variant: "warning", duration: 2000 })
+                    return
+                  }
+                  if (props.awaitingVote) {
+                    toast.show({ message: "Submit your vote before changing duel mode.", variant: "warning", duration: 2000 })
                     return
                   }
                   const current = local.model.current()
