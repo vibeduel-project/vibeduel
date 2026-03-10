@@ -245,6 +245,13 @@ export function Session() {
   const [scrollToBottomRight, setScrollToBottomRight] = createSignal<(() => void) | undefined>(undefined)
 
   const promptSessionID = createMemo(() => route.sessionID)
+  // In follow-up mode, route prompt to the viewed side's session
+  const activePromptSessionID = createMemo(() => {
+    if (awaitingVote() && isSplit() && viewingSide() === "right" && route.rightSessionID) {
+      return route.rightSessionID
+    }
+    return route.sessionID
+  })
   const messages = createMemo(() => sync.data.message[promptSessionID()] ?? [])
   const cost = createMemo(() => {
     const total = pipe(
@@ -296,7 +303,10 @@ export function Session() {
   })
   const bothDone = createMemo(() => leftDone() && rightDone())
 
-  const promptDisabled = createMemo(() => isSplit() && awaitingVote() && bothDone())
+  // Show vote controls when both models are done and awaiting vote
+  const showVoteControls = createMemo(() => isSplit() && awaitingVote() && bothDone())
+  // Disable prompt only while models are actively generating in duel mode
+  const promptDisabled = createMemo(() => isSplit() && awaitingVote() && !bothDone())
 
   createEffect(() => {
     const split = isSplit()
@@ -304,7 +314,8 @@ export function Session() {
     const both = bothDone()
     const prompt = showPrompt()
     const disabled = promptDisabled()
-    const visible = prompt && disabled
+    const voteControls = showVoteControls()
+    const visible = prompt && voteControls
     duelLog.info("vote-buttons visibility changed", {
       visible,
       showPrompt: prompt,
@@ -679,7 +690,7 @@ export function Session() {
               paddingBottom={1}
             >
               <box width="100%" maxWidth={promptMaxWidth()}>
-                <Show when={promptDisabled()}>
+                <Show when={showVoteControls()}>
                   <box flexDirection="column" alignItems="center" paddingBottom={1} gap={0}>
                     <box flexDirection="row" justifyContent="center" gap={1}>
                       <box
@@ -734,7 +745,7 @@ export function Session() {
                     <text fg={theme.textMuted}>
                       {previewedSide() !== null
                         ? `previewing ${previewedSide()} — click submit to vote`
-                        : "click left or right to preview"}
+                        : "click left or right to preview, or type a follow-up"}
                     </text>
                   </box>
                 </Show>
@@ -748,9 +759,10 @@ export function Session() {
                 </Show>
                 <Prompt
                   visible={true}
-                  broadcastSessionIDs={route.rightSessionID ? [route.rightSessionID] : undefined}
-                  compareMode={local.model.current()?.modelID === "duel"}
+                  broadcastSessionIDs={route.rightSessionID && !awaitingVote() ? [route.rightSessionID] : undefined}
+                  compareMode={local.model.current()?.modelID === "duel" && !awaitingVote()}
                   skipAutoSend={!!pendingForkWinner()}
+                  duelSessionId={awaitingVote() ? currentDuelId() : undefined}
                   disabled={promptDisabled()}
                   focused={!promptDisabled()}
                   ref={(r) => {
@@ -842,17 +854,23 @@ export function Session() {
                       : scrollToBottomLeft()
                     scrollFn?.()
                     if (isSplit()) {
-                      duelLog.info("prompt submitted in split mode, setting awaitingVote=true", { duelSessionId })
-                      setCurrentDuelId(duelSessionId)
-                      setModelReveal(undefined)
-                      setLeftColor(undefined)
-                      setRightColor(undefined)
-                      setPreviewedSide(null)
-                      setViewingSide("left")
-                      setAwaitingVote(true)
+                      if (duelSessionId && duelSessionId !== currentDuelId()) {
+                        // New duel round (initial or after vote) — reset all state
+                        duelLog.info("prompt submitted in split mode, setting awaitingVote=true", { duelSessionId })
+                        setCurrentDuelId(duelSessionId)
+                        setModelReveal(undefined)
+                        setLeftColor(undefined)
+                        setRightColor(undefined)
+                        setPreviewedSide(null)
+                        setViewingSide("left")
+                        setAwaitingVote(true)
+                      } else {
+                        // Follow-up message to one side — keep vote state intact
+                        duelLog.info("follow-up submitted to one side", { sessionID: _sessionID, duelSessionId, viewingSide: viewingSide() })
+                      }
                     }
                   }}
-                  sessionID={promptSessionID()}
+                  sessionID={activePromptSessionID()}
                 />
               </box>
             </box>

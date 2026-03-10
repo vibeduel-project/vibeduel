@@ -47,6 +47,8 @@ export type PromptProps = {
   syncMode?: 'left-to-right' | 'right-to-left'
   // When true, Prompt does NOT send messages itself — onSubmit is responsible for sending.
   skipAutoSend?: boolean
+  // Existing duel session ID for follow-up messages (reuses the round's duel ID)
+  duelSessionId?: string
   onSubmit?: (sessionID: string, prompt: PromptInfo, duelSessionId?: string) => void
   ref?: (ref: PromptRef) => void
   hint?: JSX.Element
@@ -717,7 +719,7 @@ export function Prompt(props: PromptProps) {
     const currentMode = store.mode
     const variant = local.model.variant.current()
 
-    const duelId = props.compareMode ? generateDuelId() : undefined
+    const duelId = props.compareMode ? generateDuelId() : props.duelSessionId
 
     if (store.mode === "shell") {
       sdk.client.session.shell({
@@ -784,6 +786,7 @@ export function Prompt(props: PromptProps) {
           sessionID,
           messageID,
           ...payloadProto,
+          ...(duelId ? { duelSessionId: duelId } : {}),
         })
         Log.Default.info("latency: after SDK call", { timestamp: Date.now(), sessionID })
       }
