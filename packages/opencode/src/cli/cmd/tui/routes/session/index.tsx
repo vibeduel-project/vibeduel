@@ -56,7 +56,7 @@ import { Identifier } from "@/id/id"
 function logToSide(side: "left" | "right", text: string) {
   duelLog.info(text, { side })
 }
-import { applyWinnerWorktree } from "@/duel"
+import { applyWinnerWorktree, snapshotOriginalFiles, previewWorktree, revertToOriginal, clearSnapshot } from "@/duel"
 import { setSessionTrackingNumber, getSessionTrackingNumber } from "@/session-tracking"
 import { TodoItem } from "../../component/todo-item"
 import { DialogMessage } from "./dialog-message"
@@ -227,6 +227,10 @@ export function Session() {
   const [lastToggleAt, setLastToggleAt] = createSignal(0)
   const [autoDuelDone, setAutoDuelDone] = createSignal(false)
 
+  // Preview state: tracks which side is currently previewed in the user's repo
+  const [previewedSide, setPreviewedSide] = createSignal<"left" | "right" | null>(null)
+  const [previewInFlight, setPreviewInFlight] = createSignal(false)
+
   const [controlSide, setControlSide] = createSignal<"left" | "right">("right")
   const [scrollToBottomLeft, setScrollToBottomLeft] = createSignal<(() => void) | undefined>(undefined)
   const [scrollToBottomRight, setScrollToBottomRight] = createSignal<(() => void) | undefined>(undefined)
@@ -328,6 +332,7 @@ export function Session() {
     if (isSplit()) return
     duelLog.info("not split, clearing vote state")
     setAwaitingVote(false)
+    setPreviewedSide(null)
     setLeftColor(undefined)
     setRightColor(undefined)
   })
@@ -335,8 +340,60 @@ export function Session() {
   // Guard against double-fire: @opentui renderer dispatches mouseup twice when
   // capturedRenderable is set (falls through after handling captured element)
   const [voteInFlight, setVoteInFlight] = createSignal(false)
-  const finalizeVote = async (side: "left" | "right") => {
+
+  // Preview a side's changes in the user's repo (reversible)
+  const handlePreview = async (side: "left" | "right") => {
     if (!route.rightSessionID) return
+    if (previewInFlight()) return
+    if (previewedSide() === side) return
+    setPreviewInFlight(true)
+    const duelId = currentDuelId()
+    duelLog.info("handlePreview", { side, duelId, previousPreview: previewedSide() })
+
+    if (duelId) {
+      // Snapshot original files on first preview (lazy — worktrees are guaranteed to exist by now)
+      await snapshotOriginalFiles(duelId, process.cwd())
+      // Revert any existing preview before applying the new one
+      if (previewedSide() !== null) {
+        await revertToOriginal(duelId, process.cwd())
+      }
+      await previewWorktree(duelId, side, process.cwd())
+    }
+
+    setPreviewedSide(side)
+    setControlSide(side)
+    if (side === "left") {
+      setLeftColor(theme.success)
+      setRightColor(undefined)
+    } else {
+      setRightColor(theme.success)
+      setLeftColor(undefined)
+    }
+    setPreviewInFlight(false)
+  }
+
+  // Undo any preview, restoring the original code
+  const handleUndo = async () => {
+    if (previewInFlight()) return
+    if (previewedSide() === null) return
+    setPreviewInFlight(true)
+    const duelId = currentDuelId()
+    duelLog.info("handleUndo", { duelId, previousPreview: previewedSide() })
+
+    if (duelId) {
+      await revertToOriginal(duelId, process.cwd())
+    }
+
+    setPreviewedSide(null)
+    setLeftColor(undefined)
+    setRightColor(undefined)
+    setPreviewInFlight(false)
+  }
+
+  // Submit the vote for the currently previewed side
+  const finalizeVote = async () => {
+    const side = previewedSide()
+    if (!side || !route.rightSessionID) return
     if (voteInFlight()) return
     setVoteInFlight(true)
     const winningID = side === "left" ? route.sessionID : route.rightSessionID
@@ -378,19 +435,19 @@ export function Session() {
         left: cleanName(result.model_a),
         right: cleanName(result.model_b),
       })
+      // Clean up snapshot — the preview is now permanent
+      clearSnapshot(duelId)
     } else {
       duelLog.warn("no duel session ID available, vote not submitted")
     }
 
-    // Copy winning worktree changes back to the original directory
-    if (duelId) {
-      await applyWinnerWorktree(duelId, side, process.cwd())
-    }
+    // No need to apply worktree — it's already previewed in place
 
     setLastChosenSessionID(winningID)
     setControlSide(side)
     // Store the winning side so the fork happens when the next message is sent
     setPendingForkWinner(side)
+    setPreviewedSide(null)
     setAwaitingVote(false)
     setVoteInFlight(false)
 
@@ -449,18 +506,29 @@ export function Session() {
     exitDuel()
   })
 
-  const exitDuel = () => {
+  const exitDuel = async () => {
     if (!route.rightSessionID) return
     // Use last voted session, or default to left side if no vote happened
     const selectedID = lastChosenSessionID() ?? route.sessionID
     duelLog.info("exitDuel", {
       selectedSessionID: selectedID,
       hadVote: !!lastChosenSessionID(),
+      previewedSide: previewedSide(),
     })
+
+    // Revert any active preview before exiting
+    const duelId = currentDuelId()
+    if (previewedSide() !== null && duelId) {
+      await revertToOriginal(duelId, process.cwd())
+    }
+    if (duelId) {
+      clearSnapshot(duelId)
+    }
 
     // Clear all pairwise state immediately
     setAwaitingVote(false)
     setPendingForkWinner(undefined)
+    setPreviewedSide(null)
     setModelReveal(undefined)
     setLeftColor(undefined)
     setRightColor(undefined)
@@ -548,20 +616,9 @@ export function Session() {
                         borderColor={leftColor() ?? theme.border}
                         paddingLeft={1}
                         paddingRight={1}
-                        onMouseUp={(e: any) => {
-                          duelLog.info("vote clicked: left", {
-                            eventType: e?.type,
-                            timestamp: Date.now(),
-                            button: e?.button,
-                            detail: e?.detail,
-                            target: e?.target?.toString?.(),
-                            currentTarget: e?.currentTarget?.toString?.(),
-                            stackTrace: new Error().stack,
-                          })
-                          setLeftColor(theme.success)
-                          setRightColor(undefined)
-                          setControlSide("left")
-                          finalizeVote("left")
+                        onMouseUp={() => {
+                          duelLog.info("preview clicked: left", { timestamp: Date.now() })
+                          handlePreview("left")
                         }}
                       >
                         <text fg={leftColor() ?? theme.text}>Left</text>
@@ -571,26 +628,43 @@ export function Session() {
                         borderColor={rightColor() ?? theme.border}
                         paddingLeft={1}
                         paddingRight={1}
-                        onMouseUp={(e: any) => {
-                          duelLog.info("vote clicked: right", {
-                            eventType: e?.type,
-                            timestamp: Date.now(),
-                            button: e?.button,
-                            detail: e?.detail,
-                            target: e?.target?.toString?.(),
-                            currentTarget: e?.currentTarget?.toString?.(),
-                            stackTrace: new Error().stack,
-                          })
-                          setRightColor(theme.success)
-                          setLeftColor(undefined)
-                          setControlSide("right")
-                          finalizeVote("right")
+                        onMouseUp={() => {
+                          duelLog.info("preview clicked: right", { timestamp: Date.now() })
+                          handlePreview("right")
                         }}
                       >
                         <text fg={rightColor() ?? theme.text}>Right</text>
                       </box>
+                      <box
+                        border={["left", "right", "top", "bottom"]}
+                        borderColor={previewedSide() !== null ? theme.border : theme.textMuted}
+                        paddingLeft={1}
+                        paddingRight={1}
+                        onMouseUp={() => {
+                          duelLog.info("undo clicked", { timestamp: Date.now() })
+                          handleUndo()
+                        }}
+                      >
+                        <text fg={previewedSide() !== null ? theme.text : theme.textMuted}>Undo</text>
+                      </box>
+                      <box
+                        border={["left", "right", "top", "bottom"]}
+                        borderColor={previewedSide() !== null ? theme.success : theme.textMuted}
+                        paddingLeft={1}
+                        paddingRight={1}
+                        onMouseUp={() => {
+                          duelLog.info("submit clicked", { timestamp: Date.now(), previewedSide: previewedSide() })
+                          finalizeVote()
+                        }}
+                      >
+                        <text fg={previewedSide() !== null ? theme.success : theme.textMuted}>Submit</text>
+                      </box>
                     </box>
-                    <text fg={theme.textMuted}>click to vote</text>
+                    <text fg={theme.textMuted}>
+                      {previewedSide() !== null
+                        ? `previewing ${previewedSide()} — click submit to vote`
+                        : "click left or right to preview"}
+                    </text>
                   </box>
                 </Show>
                 <Show when={modelReveal() && !awaitingVote()}>
@@ -700,6 +774,7 @@ export function Session() {
                       setModelReveal(undefined)
                       setLeftColor(undefined)
                       setRightColor(undefined)
+                      setPreviewedSide(null)
                       setAwaitingVote(true)
                     }
                   }}
