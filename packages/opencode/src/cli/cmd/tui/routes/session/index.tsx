@@ -419,12 +419,9 @@ export function Session() {
     setVoteInFlight(true)
     const winningID = side === "left" ? route.sessionID : route.rightSessionID
     const losingID = side === "left" ? route.rightSessionID : route.sessionID
-    // left prompt is sent first, so left="a", right="b" on the backend
-    const winner = side === "left" ? "a" : "b"
     const duelId = currentDuelId()
     duelLog.info("finalizeVote", {
       side,
-      winner,
       duelSessionId: duelId,
       winningSessionID: winningID,
       losingSessionID: losingID,
@@ -440,21 +437,20 @@ export function Session() {
           "Content-Type": "application/json",
           ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
         },
-        body: JSON.stringify({ duel_session_id: duelId, winner }),
+        body: JSON.stringify({ duel_session_id: duelId, winner_opencode_session: winningID }),
       })
       const result = await res.json()
       duelLog.info("vote submitted", {
         duelSessionId: duelId,
-        winner,
-        modelA: result.model_a,
-        modelB: result.model_b,
+        winnerModel: result.winner,
+        models: result.models,
         ratingUpdate: result.rating_update,
       })
-      // left="a", right="b" — strip "openai/" prefix if present
+      // Strip "openai/" prefix if present
       const cleanName = (name: string) => name.replace(/^openai\//, "")
       setModelReveal({
-        left: cleanName(result.model_a),
-        right: cleanName(result.model_b),
+        left: cleanName(result.models[route.sessionID] ?? "unknown"),
+        right: cleanName(result.models[route.rightSessionID!] ?? "unknown"),
       })
       // Clean up snapshot — the preview is now permanent
       clearSnapshot(duelId)
