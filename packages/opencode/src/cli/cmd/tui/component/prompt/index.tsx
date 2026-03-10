@@ -876,7 +876,7 @@ export function Prompt(props: PromptProps) {
       ...store.prompt,
       mode: currentMode,
     })
-    const promptInfo = { ...store.prompt, mode: currentMode }
+    const promptInfo = { ...store.prompt, input: inputText, mode: currentMode }
 
     // Clear input state
     input.extmarks.clear()
