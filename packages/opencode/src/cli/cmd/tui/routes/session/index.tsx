@@ -231,6 +231,15 @@ export function Session() {
   const [previewedSide, setPreviewedSide] = createSignal<"left" | "right" | null>(null)
   const [previewInFlight, setPreviewInFlight] = createSignal(false)
 
+  // Which side the user is currently viewing in duel mode
+  const [viewingSide, setViewingSide] = createSignal<"left" | "right">("left")
+
+  // Animated ellipsis for "Running" status
+  const [dotCount, setDotCount] = createSignal(1)
+  const dotTimer = setInterval(() => setDotCount((c) => (c % 3) + 1), 500)
+  onCleanup(() => clearInterval(dotTimer))
+  const runningText = () => ("Running" + ".".repeat(dotCount())).padEnd(10)
+
   const [controlSide, setControlSide] = createSignal<"left" | "right">("right")
   const [scrollToBottomLeft, setScrollToBottomLeft] = createSignal<(() => void) | undefined>(undefined)
   const [scrollToBottomRight, setScrollToBottomRight] = createSignal<(() => void) | undefined>(undefined)
@@ -333,6 +342,7 @@ export function Session() {
     duelLog.info("not split, clearing vote state")
     setAwaitingVote(false)
     setPreviewedSide(null)
+    setViewingSide("left")
     setLeftColor(undefined)
     setRightColor(undefined)
   })
@@ -444,6 +454,7 @@ export function Session() {
     // No need to apply worktree — it's already previewed in place
 
     setLastChosenSessionID(winningID)
+    setViewingSide(side)
     setControlSide(side)
     // Store the winning side so the fork happens when the next message is sent
     setPendingForkWinner(side)
@@ -529,6 +540,7 @@ export function Session() {
     setAwaitingVote(false)
     setPendingForkWinner(undefined)
     setPreviewedSide(null)
+    setViewingSide("left")
     setModelReveal(undefined)
     setLeftColor(undefined)
     setRightColor(undefined)
@@ -576,20 +588,79 @@ export function Session() {
     >
       <box flexDirection="column">
         <box flexDirection="column" flexGrow={1}>
+          <Show when={isSplit()}>
+            <box flexDirection="row" justifyContent="center" paddingTop={1} paddingBottom={1} flexShrink={0}>
+              <box width={58} flexDirection="row" gap={1}>
+                <Show when={pendingForkWinner() && modelReveal()} fallback={
+                  <>
+                    <box
+                      flexGrow={1}
+                      border={["left", "right", "top", "bottom"]}
+                      borderColor={viewingSide() === "left" ? theme.success : theme.border}
+                      paddingLeft={1}
+                      paddingRight={1}
+                      onMouseUp={() => {
+                        duelLog.info("tab clicked: left", { timestamp: Date.now() })
+                        setViewingSide("left")
+                        setControlSide("left")
+                      }}
+                    >
+                      <box flexDirection="column">
+                        <text fg={viewingSide() === "left" ? theme.success : theme.text}>Left</text>
+                        <text fg={theme.textMuted}>{(leftDone() ? "Completed" : runningText()).padEnd(10)}</text>
+                      </box>
+                    </box>
+                    <box
+                      flexGrow={1}
+                      border={["left", "right", "top", "bottom"]}
+                      borderColor={viewingSide() === "right" ? theme.success : theme.border}
+                      paddingLeft={1}
+                      paddingRight={1}
+                      onMouseUp={() => {
+                        duelLog.info("tab clicked: right", { timestamp: Date.now() })
+                        setViewingSide("right")
+                        setControlSide("right")
+                      }}
+                    >
+                      <box flexDirection="column">
+                        <text fg={viewingSide() === "right" ? theme.success : theme.text}>Right</text>
+                        <text fg={theme.textMuted}>{(rightDone() ? "Completed" : runningText()).padEnd(10)}</text>
+                      </box>
+                    </box>
+                  </>
+                }>
+                  <box
+                    flexGrow={1}
+                    border={["left", "right", "top", "bottom"]}
+                    borderColor={theme.success}
+                    paddingLeft={1}
+                    paddingRight={1}
+                  >
+                    <box flexDirection="column">
+                      <text fg={theme.success}>{modelReveal()![pendingForkWinner()!]}</text>
+                      <text fg={theme.textMuted}>Completed</text>
+                    </box>
+                  </box>
+                </Show>
+              </box>
+            </box>
+          </Show>
           <box flexDirection="row" flexGrow={1}>
-            <SessionPane
-              sessionID={route.sessionID}
-              width={leftPaneWidth()}
-              isSplit={isSplit()}
-              side="left"
-              controlSide={controlSide()}
-              otherSessionID={route.rightSessionID}
-              onScrollToBottom={(fn) => setScrollToBottomLeft(() => fn)}
-            />
-            <Show when={splitAnimProgress() > 0 && route.rightSessionID}>
+            <Show when={!isSplit() || viewingSide() === "left"}>
+              <SessionPane
+                sessionID={route.sessionID}
+                width={isSplit() ? dimensions().width : leftPaneWidth()}
+                isSplit={isSplit()}
+                side="left"
+                controlSide={controlSide()}
+                otherSessionID={route.rightSessionID}
+                onScrollToBottom={(fn) => setScrollToBottomLeft(() => fn)}
+              />
+            </Show>
+            <Show when={isSplit() && viewingSide() === "right" && route.rightSessionID}>
               <SessionPane
                 sessionID={route.rightSessionID!}
-                width={rightPaneWidth()}
+                width={dimensions().width}
                 isSplit={isSplit()}
                 side="right"
                 controlSide={controlSide()}
@@ -766,7 +837,9 @@ export function Session() {
                       setPendingForkWinner(undefined)
                     }
 
-                    const scrollFn = isSplit() ? scrollToBottomRight() : scrollToBottomLeft()
+                    const scrollFn = isSplit()
+                      ? (viewingSide() === "right" ? scrollToBottomRight() : scrollToBottomLeft())
+                      : scrollToBottomLeft()
                     scrollFn?.()
                     if (isSplit()) {
                       duelLog.info("prompt submitted in split mode, setting awaitingVote=true", { duelSessionId })
@@ -775,6 +848,7 @@ export function Session() {
                       setLeftColor(undefined)
                       setRightColor(undefined)
                       setPreviewedSide(null)
+                      setViewingSide("left")
                       setAwaitingVote(true)
                     }
                   }}
