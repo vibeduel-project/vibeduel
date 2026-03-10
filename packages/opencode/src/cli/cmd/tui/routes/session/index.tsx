@@ -56,7 +56,7 @@ import { Identifier } from "@/id/id"
 function logToSlot(slot: number, text: string) {
   duelLog.info(text, { slot })
 }
-import { applyWinnerWorktree, snapshotOriginalFiles, previewWorktree, revertToOriginal, clearSnapshot } from "@/duel"
+import { applyWinnerWorktree, snapshotOriginalFiles, previewWorktree, revertToOriginal, clearSnapshot, logRoundStart } from "@/duel"
 import { setSessionTrackingNumber, getSessionTrackingNumber } from "@/session-tracking"
 import { TodoItem } from "../../component/todo-item"
 import { DialogMessage } from "./dialog-message"
@@ -277,6 +277,30 @@ export function Session() {
   )
   const allDone = createMemo(() => slotDone().every(d => d))
 
+  createEffect(() => {
+    if (!isSplit()) return
+    const slots = slotMessages()
+    const ids = allSessionIDs()
+    const summary = ids.map((id, i) => {
+      const msgs = slots[i]
+      const details = msgs.map((msg) => {
+        const parts = sync.data.part[msg.id] ?? []
+        const text = parts
+          .filter((p: any) => p.type === "text")
+          .map((p: any) => p.text)
+          .join("")
+        const content = text.length > 0
+          ? text.length <= 100
+            ? text
+            : `hash:${Array.from(new Uint8Array(new TextEncoder().encode(text).buffer.slice(0, 32))).map(b => b.toString(16).padStart(2, "0")).join("").slice(0, 16)}`
+          : "(no text)"
+        return { role: msg.role, content }
+      })
+      return { slot: i, sessionID: id, count: msgs.length, messages: details }
+    })
+    duelLog.info("slotMessages state", { slots: summary })
+  })
+
   // Show vote controls when all models are done and awaiting vote
   const showVoteControls = createMemo(() => isSplit() && awaitingVote() && allDone())
   // Disable prompt only while models are actively generating in duel mode
@@ -426,10 +450,15 @@ export function Session() {
 
     // No need to apply worktree — it's already previewed in place
 
-    setLastChosenSessionID(winningID)
+    // Fork the winner into a fresh x-opencode-session so each round uses new IDs
+    const fork = await sdk.client.session.fork({ sessionID: winningID })
+    const freshID = fork.data!.id
+    duelLog.info("finalizeVote: forked winner to fresh session", { winningID, freshID })
+
+    setLastChosenSessionID(freshID)
     setViewingSlot(slot)
     setControlSlot(slot)
-    // Store the winning slot so the fork happens when the next message is sent
+    // Store the winning slot so the fork-after-vote flow uses freshID on next prompt
     setPendingForkWinner(slot)
     setPreviewedSlot(null)
     setAwaitingVote(false)
@@ -579,7 +608,7 @@ export function Session() {
                         }}
                       >
                         <box flexDirection="column">
-                          <text fg={viewingSlot() === index() ? theme.success : theme.text}>Slot {index() + 1}</text>
+                          <text fg={viewingSlot() === index() ? theme.success : theme.text}>Slot {index()}</text>
                           <text fg={theme.textMuted}>{(slotDone()[index()] ? "Completed" : runningText()).padEnd(10)}</text>
                         </box>
                       </box>
@@ -644,7 +673,7 @@ export function Session() {
                               handlePreview(index())
                             }}
                           >
-                            <text fg={(slotColors()[index()] as string | undefined) ?? theme.text}>Slot {index() + 1}</text>
+                            <text fg={(slotColors()[index()] as string | undefined) ?? theme.text}>Slot {index()}</text>
                           </box>
                         )}
                       </For>
@@ -675,7 +704,7 @@ export function Session() {
                     </box>
                     <text fg={theme.textMuted}>
                       {previewedSlot() !== null
-                        ? `previewing slot ${previewedSlot()! + 1} — click submit to vote`
+                        ? `previewing slot ${previewedSlot()} — click submit to vote`
                         : "click a slot to preview, or type a follow-up"}
                     </text>
                   </box>
@@ -686,7 +715,7 @@ export function Session() {
                       {(sessionID, index) => (
                         <>
                           <Show when={index() > 0}><text fg={theme.textMuted}> | </text></Show>
-                          <text fg={theme.textMuted}>Slot {index() + 1}: </text>
+                          <text fg={theme.textMuted}>Slot {index()}: </text>
                           <text fg={theme.text}>{modelReveal()![sessionID] ?? "unknown"}</text>
                         </>
                       )}
@@ -698,7 +727,7 @@ export function Session() {
                   broadcastSessionIDs={route.opponentSessionIDs?.length && !awaitingVote() ? route.opponentSessionIDs : undefined}
                   compareMode={local.model.current()?.modelID === "duel" && !awaitingVote()}
                   awaitingVote={awaitingVote()}
-                  skipAutoSend={!!pendingForkWinner()}
+                  skipAutoSend={pendingForkWinner() !== undefined}
                   duelSessionId={awaitingVote() ? currentDuelId() : undefined}
                   disabled={promptDisabled()}
                   focused={!promptDisabled()}
@@ -720,7 +749,8 @@ export function Session() {
                     // 2. Send prompt to winner (slot 0) and each fork (slots 1..N-1)
                     // 3. Navigate with new opponent IDs
                     if (winnerSlot !== undefined && route.opponentSessionIDs?.length) {
-                      const winningID = allSessionIDs()[winnerSlot]
+                      // Use the freshly forked session from finalizeVote (stored in lastChosenSessionID)
+                      const winningID = lastChosenSessionID() ?? allSessionIDs()[winnerSlot]
                       duelLog.info("forking winner on next message", { winnerSlot, winningSessionID: winningID })
 
                       const nonTextParts = _promptInfo.parts.filter((part) => part.type !== "text")
@@ -737,8 +767,18 @@ export function Session() {
                         duelSessionId,
                       }
 
-                      // Send prompt to winner (slot 0)
+                      // Fork winner N-1 times BEFORE sending any prompts
+                      // (so forks copy pre-prompt history, avoiding duplicate user messages)
                       const forkDuelCount = getDuelCount()
+                      const newOpponentIDs: string[] = []
+                      for (let i = 0; i < forkDuelCount - 1; i++) {
+                        const fork = await sdk.client.session.fork({ sessionID: winningID })
+                        if (fork.data) {
+                          newOpponentIDs.push(fork.data.id)
+                        }
+                      }
+
+                      // Now send prompts to winner (slot 0) and all forks (slots 1..N-1)
                       duelLog.info("sending prompt to winner", { sessionID: winningID, duelSessionId, duelSlot: 0, duelSlotCount: forkDuelCount })
                       sdk.client.session.prompt({
                         sessionID: winningID,
@@ -747,24 +787,23 @@ export function Session() {
                         duelSlot: 0,
                         duelSlotCount: forkDuelCount,
                       })
-
-                      // Fork winner N-1 times (use current duelCount, not previous round's opponent count)
-                      const newOpponentIDs: string[] = []
-                      for (let i = 0; i < forkDuelCount - 1; i++) {
-                        const fork = await sdk.client.session.fork({ sessionID: winningID })
-                        if (fork.data) {
-                          const forkedID = fork.data.id
-                          newOpponentIDs.push(forkedID)
-                          duelLog.info("sending prompt to fork", { sessionID: forkedID, duelSessionId, duelSlot: i + 1, duelSlotCount: forkDuelCount })
-                          sdk.client.session.prompt({
-                            sessionID: forkedID,
-                            messageID: Identifier.ascending("message"),
-                            ...promptPayload,
-                            duelSlot: i + 1,
-                            duelSlotCount: forkDuelCount,
-                          })
-                        }
+                      for (let i = 0; i < newOpponentIDs.length; i++) {
+                        const forkedID = newOpponentIDs[i]
+                        duelLog.info("sending prompt to fork", { sessionID: forkedID, duelSessionId, duelSlot: i + 1, duelSlotCount: forkDuelCount })
+                        sdk.client.session.prompt({
+                          sessionID: forkedID,
+                          messageID: Identifier.ascending("message"),
+                          ...promptPayload,
+                          duelSlot: i + 1,
+                          duelSlotCount: forkDuelCount,
+                        })
                       }
+
+                      logRoundStart({
+                        sessionTrackingNumber: getSessionTrackingNumber(),
+                        sessionId: duelSessionId!,
+                        slots: [winningID, ...newOpponentIDs],
+                      })
 
                       navigate({
                         type: "session",

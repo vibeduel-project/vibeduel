@@ -16,7 +16,7 @@ import { useCommandDialog } from "../component/dialog-command"
 import { useSDK } from "@tui/context/sdk"
 import { useLocal } from "../context/local"
 import { Identifier } from "@/id/id"
-import { generateDuelId } from "@/duel"
+import { generateDuelId, logRoundStart } from "@/duel"
 import { getSessionTrackingNumber } from "@/session-tracking"
 import { Log } from "@/util/log"
 
@@ -323,16 +323,15 @@ export function Home() {
                   const duelCount = getDuelCount()
                   const opponentIDs: string[] = []
                   for (let i = 0; i < duelCount - 1; i++) {
-                    const opponentSession = await sdk.client.session.create({ parentID: sessionID })
+                    const opponentSession = await sdk.client.session.create({})
                     if (opponentSession.data?.id) opponentIDs.push(opponentSession.data.id)
                   }
 
                   if (opponentIDs.length > 0) {
-                    duelLog.info("home forking into split", {
-                      sessionID,
-                      opponentIDs,
-                      duelSessionId,
-                      duelCount,
+                    logRoundStart({
+                      sessionTrackingNumber: getSessionTrackingNumber(),
+                      sessionId: duelSessionId,
+                      slots: [sessionID, ...opponentIDs],
                     })
                     const selectedModel = local.model.current()
                     const nonTextParts = promptInfo.parts.filter((part) => part.type !== "text")

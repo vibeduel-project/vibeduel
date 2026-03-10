@@ -267,3 +267,28 @@ export function clearSnapshot(duelId: string): void {
 export function generateDuelId(): string {
   return `duel_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`
 }
+
+// Round counter for logging
+let currentTrackingNumber: string | undefined
+let roundNumber = 0
+
+export function logRoundStart(opts: {
+  sessionTrackingNumber: string
+  sessionId: string
+  slots: string[]
+}): void {
+  if (opts.sessionTrackingNumber !== currentTrackingNumber) {
+    currentTrackingNumber = opts.sessionTrackingNumber
+    roundNumber = 1
+  } else {
+    roundNumber++
+  }
+  const slotDetails = opts.slots.map((xOpenCodeSession, i) => `slot${i}=${xOpenCodeSession}`).join(" ")
+  log.info("round start", {
+    round: roundNumber,
+    slotCount: opts.slots.length,
+    session_tracking_number: opts.sessionTrackingNumber,
+    session_id: opts.sessionId,
+    slots: slotDetails,
+  })
+}
