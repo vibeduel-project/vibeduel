@@ -1,6 +1,7 @@
 - "session" - a full session of using vibeduel - a session is composed of duel rounds or normal single-model turns
 - "duel round" - starts when a user toggles duel mode and enters an initial message. end when the user submits a vote for one of the slots/agents. prior to submitting a vote, the user can submit follow-ups messages to individual slots.
 - your api key lives in ~/.local/share/vibeduel/auth.json
+- tab bar is where those navigation buttons are.
 - the box for each agent is called a SessionPane
 - the component where you type your prompt in ("prompt box") is called Prompt
 - the place where the SessionPanes and Prompt are is called the Session formally, but you can call it the workspace/viewport

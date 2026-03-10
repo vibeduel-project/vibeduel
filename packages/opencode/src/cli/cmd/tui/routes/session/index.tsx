@@ -207,8 +207,18 @@ export function Session() {
   const [previewedSlot, setPreviewedSlot] = createSignal<number | null>(null)
   const [previewInFlight, setPreviewInFlight] = createSignal(false)
 
-  // Which slot the user is currently viewing in duel mode
+  // Which slot the user is currently viewing in duel mode (-1 = "All" split view)
   const [viewingSlot, setViewingSlot] = createSignal(0)
+  const isAllView = createMemo(() => viewingSlot() === -1)
+  const showAllTab = createMemo(() => isSplit() && allSessionIDs().length === 2)
+  // Tab bar height: paddingTop(1) + borderTop(1) + 2 text lines + borderBottom(1) + paddingBottom(1) = 6
+  // Wrapper border: top(1) + bottom(1) = 2
+  // SessionPane padding: top(1) + bottom(1) = 2
+  const allViewPaneHeight = createMemo(() => {
+    const tabBarHeight = 6
+    const wrapperBorder = 2
+    return dimensions().height - tabBarHeight - wrapperBorder
+  })
 
   // Animated ellipsis for "Running" status
   const [dotCount, setDotCount] = createSignal(1)
@@ -590,9 +600,10 @@ export function Session() {
       <box flexDirection="column">
         <box flexDirection="column" flexGrow={1}>
           <Show when={isSplit()}>
-            <box flexDirection="row" justifyContent="center" paddingTop={1} paddingBottom={1} flexShrink={0}>
-              <box width={Math.min(58, allSessionIDs().length * 20)} flexDirection="row" gap={1}>
+            <box flexDirection="row" justifyContent="center" paddingTop={1} paddingBottom={1} flexShrink={0} zIndex={100}>
+              <box width={Math.min(78, (allSessionIDs().length + (showAllTab() ? 1 : 0)) * 20)} flexDirection="row" gap={1}>
                 <Show when={pendingForkWinner() !== undefined && modelReveal()} fallback={
+                  <>
                   <For each={allSessionIDs()}>
                     {(sessionID, index) => (
                       <box
@@ -614,6 +625,25 @@ export function Session() {
                       </box>
                     )}
                   </For>
+                  <Show when={showAllTab()}>
+                    <box
+                      flexGrow={1}
+                      border={["left", "right", "top", "bottom"]}
+                      borderColor={isAllView() ? theme.success : theme.border}
+                      paddingLeft={1}
+                      paddingRight={1}
+                      onMouseUp={() => {
+                        duelLog.info("tab clicked", { slot: "all", timestamp: Date.now() })
+                        setViewingSlot(-1)
+                      }}
+                    >
+                      <box flexDirection="column">
+                        <text fg={isAllView() ? theme.success : theme.text}>All</text>
+                        <text fg={theme.textMuted}>{(allDone() ? "Completed" : runningText()).padEnd(10)}</text>
+                      </box>
+                    </box>
+                  </Show>
+                  </>
                 }>
                   <box
                     flexGrow={1}
@@ -631,24 +661,51 @@ export function Session() {
               </box>
             </box>
           </Show>
-          <box flexDirection="row" flexGrow={1}>
-            <SessionPane
-              sessionID={allSessionIDs()[viewingSlot()] ?? route.sessionID}
-              width={dimensions().width}
-              isSplit={isSplit()}
-              slot={viewingSlot()}
-              controlSlot={controlSlot()}
-              opponentSessionIDs={route.opponentSessionIDs}
-              onScrollToBottom={(fn) => {
-                setScrollToBottomFns(prev => {
-                  const next = [...prev]
-                  next[viewingSlot()] = fn
-                  return next
-                })
-              }}
-            />
-          </box>
-          <Show when={showPrompt()}>
+          <Show when={isAllView()} fallback={
+            <box flexDirection="row" flexGrow={1}>
+              <SessionPane
+                sessionID={allSessionIDs()[viewingSlot()] ?? route.sessionID}
+                width={dimensions().width}
+                isSplit={isSplit()}
+                slot={viewingSlot()}
+                controlSlot={controlSlot()}
+                opponentSessionIDs={route.opponentSessionIDs}
+                onScrollToBottom={(fn) => {
+                  setScrollToBottomFns(prev => {
+                    const next = [...prev]
+                    next[viewingSlot()] = fn
+                    return next
+                  })
+                }}
+              />
+            </box>
+          }>
+            <box flexDirection="row" flexGrow={1} height="100%">
+              <box width="50%" height="100%" border={["left", "right", "top", "bottom"]} borderColor={theme.border} overflow="hidden">
+                <SessionPane
+                  sessionID={allSessionIDs()[0]}
+                  width={Math.floor(dimensions().width / 2) - 2}
+                  height={allViewPaneHeight()}
+                  isSplit={isSplit()}
+                  slot={0}
+                  controlSlot={controlSlot()}
+                  opponentSessionIDs={route.opponentSessionIDs}
+                />
+              </box>
+              <box width="50%" height="100%" border={["left", "right", "top", "bottom"]} borderColor={theme.border} overflow="hidden">
+                <SessionPane
+                  sessionID={allSessionIDs()[1]}
+                  width={Math.floor(dimensions().width / 2) - 2}
+                  height={allViewPaneHeight()}
+                  isSplit={isSplit()}
+                  slot={1}
+                  controlSlot={controlSlot()}
+                  opponentSessionIDs={route.opponentSessionIDs}
+                />
+              </box>
+            </box>
+          </Show>
+          <Show when={showPrompt() && !isAllView()}>
             <box
               flexShrink={0}
               justifyContent="center"
@@ -846,6 +903,7 @@ export function Session() {
 function SessionPane(props: {
   sessionID: string
   width: number
+  height?: number
   isSplit: boolean
   slot: number
   controlSlot: number
@@ -929,7 +987,7 @@ function SessionPane(props: {
     const last = lastAssistant()
     const p = pending()
     duelLog.info("pane state", {
-      side: props.side,
+      slot: props.slot,
       sessionID: props.sessionID,
       messageCount: msgs.length,
       lastAssistantID: last?.id,
@@ -984,7 +1042,7 @@ function SessionPane(props: {
       .join("")
 
     duelLog.info("assistant message completed", {
-      side: props.side,
+      slot: props.slot,
       sessionID: props.sessionID,
       messageID: msg.id,
       textLength: text.length,
@@ -1717,7 +1775,7 @@ function SessionPane(props: {
 
   return (
     <context.Provider value={ctx}>
-      <box width={props.width} paddingBottom={1} paddingTop={1} paddingLeft={2} paddingRight={2} gap={1}>
+      <box width={props.width} height={props.height} paddingBottom={1} paddingTop={1} paddingLeft={2} paddingRight={2} gap={1}>
         <Show when={session()}>
           <scrollbox
             ref={(r) => {
