@@ -70,6 +70,9 @@ let lastSingleModel: { providerID: string; modelID: string } | undefined
 // Track whether duel was auto-entered due to low credits
 export let autoDuelPreviousModel: { providerID: string; modelID: string } | undefined
 export function clearAutoDuelPreviousModel() { autoDuelPreviousModel = undefined }
+// Duel count: how many models compete in a duel (2 or 4)
+const [duelCountSignal, setDuelCountSignal] = createSignal(2)
+export function getDuelCount() { return duelCountSignal() }
 
 const PLACEHOLDERS = ["Fix a TODO in the codebase", "What is the tech stack of this project?", "Fix broken tests"]
 
@@ -772,13 +775,15 @@ export function Prompt(props: PromptProps) {
       if (props.skipAutoSend) {
         duelLog.info("prompt: skipAutoSend=true, deferring send to onSubmit", { sessionID, duelId })
       } else if (props.compareMode) {
-        duelLog.info("duel left request sent", { sessionID, duelId, ts: Date.now() })
+        const slotCount = getDuelCount()
+        duelLog.info("duel slot 0 request sent", { sessionID, duelId, slotCount, ts: Date.now() })
         sdk.client.session.prompt({
           sessionID,
           messageID,
           ...payloadProto,
           duelSessionId: duelId,
-          duelSide: "left" as const,
+          duelSlot: 0,
+          duelSlotCount: slotCount,
         })
       } else {
         Log.Default.info("latency: before SDK call", { timestamp: Date.now(), sessionID })
@@ -793,14 +798,16 @@ export function Prompt(props: PromptProps) {
 
       if (props.broadcastSessionIDs && !props.skipAutoSend) {
         if (props.compareMode) {
-          for (const targetID of props.broadcastSessionIDs) {
-            duelLog.info("duel right request sent", { targetID, duelId, ts: Date.now() })
+          for (let i = 0; i < props.broadcastSessionIDs.length; i++) {
+            const targetID = props.broadcastSessionIDs[i]
+            duelLog.info("duel slot request sent", { targetID, duelId, slot: i + 1, ts: Date.now() })
             sdk.client.session.prompt({
               sessionID: targetID,
               messageID: Identifier.ascending("message"),
               ...payloadProto,
               duelSessionId: duelId,
-              duelSide: "right" as const,
+              duelSlot: i + 1,
+              duelSlotCount: getDuelCount(),
             })
           }
         } else {
@@ -819,7 +826,7 @@ export function Prompt(props: PromptProps) {
                   route.navigate({
                     type: "session",
                     sessionID: leftID,
-                    rightSessionID: newRightID,
+                    opponentSessionIDs: [newRightID],
                   })
                 }
               } catch (e) {
@@ -851,8 +858,8 @@ export function Prompt(props: PromptProps) {
             ) {
               route.navigate({
                 type: "session",
-                sessionID: newBroadcastSessionIDs[0], // Only updating the left pane
-                rightSessionID: sessionID,            // Keeping right pane same
+                sessionID: newBroadcastSessionIDs[0], // Only updating the primary pane
+                opponentSessionIDs: [sessionID],      // Keeping opponent pane same
               })
             }
           }
@@ -1083,7 +1090,7 @@ export function Prompt(props: PromptProps) {
                   e.preventDefault()
                   return
                 }
-                // Shift+Tab: toggle between duel and single model mode
+                // Shift+Tab: cycle single → duel(2) → duel(3) → duel(4) → single
                 if (e.shift && e.name === "tab") {
                   e.preventDefault()
                   if (status().type !== "idle") {
@@ -1091,7 +1098,23 @@ export function Prompt(props: PromptProps) {
                     return
                   }
                   const current = local.model.current()
-                  if (current?.modelID === "duel") {
+                  if (current?.modelID !== "duel") {
+                    // single → duel(2)
+                    if (current) lastSingleModel = { providerID: current.providerID, modelID: current.modelID }
+                    setDuelCountSignal(2)
+                    duelLog.info("shift+tab: switching to duel(2)", { from: current })
+                    local.model.set({ providerID: "vibeduel", modelID: "duel" })
+                  } else if (duelCountSignal() === 2) {
+                    // duel(2) → duel(3)
+                    setDuelCountSignal(3)
+                    duelLog.info("shift+tab: switching to duel(3)")
+                  } else if (duelCountSignal() === 3) {
+                    // duel(3) → duel(4)
+                    setDuelCountSignal(4)
+                    duelLog.info("shift+tab: switching to duel(4)")
+                  } else {
+                    // duel(4) → single
+                    setDuelCountSignal(2)
                     const target =
                       lastSingleModel ??
                       (() => {
@@ -1110,10 +1133,6 @@ export function Prompt(props: PromptProps) {
                       duelLog.info("shift+tab: switching to single mode", { model: target })
                       local.model.set(target)
                     }
-                  } else {
-                    if (current) lastSingleModel = { providerID: current.providerID, modelID: current.modelID }
-                    duelLog.info("shift+tab: switching to duel mode", { from: current })
-                    local.model.set({ providerID: "vibeduel", modelID: "duel" })
                   }
                   return
                 }
@@ -1301,6 +1320,9 @@ export function Prompt(props: PromptProps) {
               <box flexDirection="row" gap={2}>
                 <text fg={theme.textMuted} wrapMode="none">{tokenContext() ?? ""}</text>
                 <text fg={creditsBlink() ? theme.warning : theme.textMuted} wrapMode="none">Credits: {credits() !== null ? `${credits()}/250` : "—"}</text>
+                <Show when={local.model.current()?.modelID === "duel"}>
+                  <text fg={theme.success} wrapMode="none">+{duelCountSignal()}</text>
+                </Show>
               </box>
             </box>
           </box>
@@ -1416,7 +1438,7 @@ export function Prompt(props: PromptProps) {
               <Switch>
                 <Match when={store.mode === "normal"}>
                   <text fg={theme.text}>
-                    shift+tab <span style={{ fg: theme.textMuted }}>toggle duel</span>
+                    shift+tab <span style={{ fg: theme.textMuted }}>cycle duel</span>
                   </text>
                   <text fg={theme.text}>
                     {keybind.print("command_list")} <span style={{ fg: theme.textMuted }}>commands</span>

@@ -5,9 +5,12 @@ import { useSync } from "@tui/context/sync"
 import { useTheme } from "@tui/context/theme"
 import { useKeybind } from "../../context/keybind"
 import { useCommandDialog } from "@tui/component/dialog-command"
+import { useLocal } from "@tui/context/local"
+import { getDuelCount } from "@tui/component/prompt"
 
 const ContextInfo = (props: { context: Accessor<string | undefined>; credits: Accessor<number | null> }) => {
   const { theme } = useTheme()
+  const local = useLocal()
   return (
     <Show when={props.context()}>
       <box flexDirection="row" gap={2} flexShrink={0}>
@@ -17,6 +20,9 @@ const ContextInfo = (props: { context: Accessor<string | undefined>; credits: Ac
         <text fg={theme.textMuted} wrapMode="none">
           Credits: {props.credits() !== null ? `${props.credits()}/250` : "—"}
         </text>
+        <Show when={local.model.current()?.modelID === "duel"}>
+          <text fg={theme.success} wrapMode="none">+{getDuelCount()}</text>
+        </Show>
       </box>
     </Show>
   )

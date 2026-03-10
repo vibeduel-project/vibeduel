@@ -103,7 +103,8 @@ export namespace SessionPrompt {
     system: z.string().optional(),
     variant: z.string().optional(),
     duelSessionId: z.string().optional(),
-    duelSide: z.enum(["left", "right"]).optional(),
+    duelSlot: z.number().int().min(0).optional(),
+    duelSlotCount: z.number().int().min(2).optional(),
     sessionTrackingNumber: z.string().optional(),
     parts: z.array(
       z.discriminatedUnion("type", [
@@ -161,8 +162,8 @@ export namespace SessionPrompt {
     const message = await createUserMessage(input)
     await Session.touch(input.sessionID)
 
-    // Update session title from first user prompt (skip right-side duel sessions)
-    if (input.duelSide !== "right") {
+    // Update session title from first user prompt (only slot 0 / non-duel sessions)
+    if (!input.duelSlot || input.duelSlot === 0) {
       await Session.updateTitleFromFirstMessage(input.sessionID, message.parts)
     }
 
@@ -197,12 +198,12 @@ export namespace SessionPrompt {
       log.info("duel mode active", { sessionID: input.sessionID, duelSessionId: input.duelSessionId })
       setDuel(input.sessionID, input.duelSessionId)
 
-      if (input.duelSide) {
-        log.info("latency: before createDuelWorktrees", { timestamp: Date.now(), sessionID: input.sessionID })
-        const worktrees = await createDuelWorktrees(input.duelSessionId, Instance.directory)
+      if (input.duelSlot !== undefined) {
+        log.info("latency: before createDuelWorktrees", { timestamp: Date.now(), sessionID: input.sessionID, duelSlot: input.duelSlot })
+        const worktrees = await createDuelWorktrees(input.duelSessionId, Instance.directory, input.duelSlotCount ?? 2)
         log.info("latency: after createDuelWorktrees", { timestamp: Date.now(), sessionID: input.sessionID })
-        const worktreePath = worktrees[input.duelSide]
-        log.info("latency: after worktreePath lookup", { timestamp: Date.now(), sessionID: input.sessionID })
+        const worktreePath = worktrees[input.duelSlot]
+        log.info("latency: after worktreePath lookup", { timestamp: Date.now(), sessionID: input.sessionID, duelSlot: input.duelSlot, worktreePath })
         setDuelWorktree(input.sessionID, worktreePath)
         log.info("latency: after setDuelWorktree", { timestamp: Date.now(), sessionID: input.sessionID })
       }

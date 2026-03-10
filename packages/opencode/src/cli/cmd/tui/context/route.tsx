@@ -10,7 +10,7 @@ export type HomeRoute = {
 export type SessionRoute = {
   type: "session"
   sessionID: string
-  rightSessionID?: string
+  opponentSessionIDs?: string[]
   initialPrompt?: PromptInfo
   duelSessionId?: string
 }
@@ -38,7 +38,7 @@ export const { use: useRoute, provider: RouteProvider } = createSimpleContext({
           setStore({
             type: "session",
             sessionID: route.sessionID,
-            rightSessionID: route.rightSessionID ?? undefined,
+            opponentSessionIDs: route.opponentSessionIDs ?? undefined,
             initialPrompt: route.initialPrompt,
             duelSessionId: route.duelSessionId,
           } as any)
@@ -47,7 +47,7 @@ export const { use: useRoute, provider: RouteProvider } = createSimpleContext({
         setStore({
           type: "home",
           sessionID: undefined,
-          rightSessionID: undefined,
+          opponentSessionIDs: undefined,
           initialPrompt: route.initialPrompt,
         } as any)
       },

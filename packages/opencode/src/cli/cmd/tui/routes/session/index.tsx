@@ -27,7 +27,7 @@ import {
   TextAttributes,
   type RGBA,
 } from "@opentui/core"
-import { Prompt, type PromptRef, autoDuelPreviousModel, clearAutoDuelPreviousModel } from "@tui/component/prompt"
+import { Prompt, type PromptRef, autoDuelPreviousModel, clearAutoDuelPreviousModel, getDuelCount } from "@tui/component/prompt"
 import { Spinner } from "../../component/spinner"
 import type { AssistantMessage, Part, ToolPart, UserMessage, TextPart, ReasoningPart } from "@opencode-ai/sdk/v2"
 import { useLocal } from "@tui/context/local"
@@ -53,8 +53,8 @@ import { parsePatch } from "diff"
 import { useDialog } from "../../ui/dialog"
 import { Identifier } from "@/id/id"
 
-function logToSide(side: "left" | "right", text: string) {
-  duelLog.info(text, { side })
+function logToSlot(slot: number, text: string) {
+  duelLog.info(text, { slot })
 }
 import { applyWinnerWorktree, snapshotOriginalFiles, previewWorktree, revertToOriginal, clearSnapshot } from "@/duel"
 import { setSessionTrackingNumber, getSessionTrackingNumber } from "@/session-tracking"
@@ -161,50 +161,27 @@ export function Session() {
     return false
   })
 
-  const isSplit = createMemo(() => !!route.rightSessionID)
-  const SPLIT_ANIMATION_FRAMES = 6
-  const SPLIT_ANIMATION_INTERVAL = 30
-  const [splitAnimProgress, setSplitAnimProgress] = createSignal(isSplit() ? 1 : 0)
-  createEffect(() => {
-    const target = isSplit() ? 1 : 0
-    if (splitAnimProgress() === target) return
-    const step = isSplit() ? 1 / SPLIT_ANIMATION_FRAMES : -1 / SPLIT_ANIMATION_FRAMES
-    const timer = setInterval(() => {
-      setSplitAnimProgress((prev) => {
-        const next = prev + step
-        if ((step > 0 && next >= 1) || (step < 0 && next <= 0)) {
-          clearInterval(timer)
-          return target
-        }
-        return next
-      })
-    }, SPLIT_ANIMATION_INTERVAL)
-    onCleanup(() => clearInterval(timer))
-  })
-  const leftPaneWidth = createMemo(() => {
-    const fullWidth = dimensions().width
-    const halfWidth = Math.floor(fullWidth * 0.5)
-    return Math.round(fullWidth - (fullWidth - halfWidth) * splitAnimProgress())
-  })
-  const rightPaneWidth = createMemo(() => {
-    const fullWidth = dimensions().width
-    return Math.max(1, fullWidth - leftPaneWidth())
+  const isSplit = createMemo(() => !!(route.opponentSessionIDs?.length))
+
+  // All session IDs in slot order: [primary, opponent0, opponent1, ...]
+  const allSessionIDs = createMemo(() => {
+    const ids = [route.sessionID]
+    if (route.opponentSessionIDs) ids.push(...route.opponentSessionIDs)
+    return ids
   })
 
   // Track which session pane is currently active (has focus)
   const [activeSessionID, setActiveSessionID] = createSignal(route.sessionID)
 
   // Ensure active session is valid (defaults to route.sessionID if invalid)
-  // Ensure active session is valid (defaults to route.sessionID if invalid)
   createEffect(() => {
-    if (activeSessionID() !== route.sessionID && activeSessionID() !== route.rightSessionID) {
+    if (!allSessionIDs().includes(activeSessionID())) {
       setActiveSessionID(route.sessionID)
     }
   })
 
-  // Button colors
-  const [leftColor, setLeftColor] = createSignal<string | RGBA | undefined>(undefined)
-  const [rightColor, setRightColor] = createSignal<string | RGBA | undefined>(undefined)
+  // Button colors for each slot
+  const [slotColors, setSlotColors] = createSignal<(string | RGBA | undefined)[]>([])
   // When navigating from home.tsx, the prompt was already submitted before this component mounts,
   // so onSubmit (which sets awaitingVote=true) never fires. Initialize to isSplit() to cover that case.
   const initialAwaitingVote = isSplit()
@@ -212,27 +189,26 @@ export function Session() {
     isSplit: initialAwaitingVote,
     awaitingVoteInitial: initialAwaitingVote,
     duelSessionId: route.duelSessionId,
-    leftSessionID: route.sessionID,
-    rightSessionID: route.rightSessionID,
+    sessionIDs: allSessionIDs(),
   })
   const [awaitingVote, setAwaitingVote] = createSignal(initialAwaitingVote)
   // Track the duel session ID for voting. On mount (first round from home), read from route.
   // On subsequent rounds, captured from Prompt's onSubmit callback.
   const [currentDuelId, setCurrentDuelId] = createSignal<string | undefined>(route.duelSessionId)
   const [lastChosenSessionID, setLastChosenSessionID] = createSignal<string | undefined>(undefined)
-  // Deferred fork: store which side won so the fork happens on next message submit, not immediately on vote
-  const [pendingForkWinner, setPendingForkWinner] = createSignal<"left" | "right" | undefined>(undefined)
-  // Model reveal after voting: shows which model was on which side
-  const [modelReveal, setModelReveal] = createSignal<{ left: string; right: string } | undefined>(undefined)
+  // Deferred fork: store which slot won so the fork happens on next message submit, not immediately on vote
+  const [pendingForkWinner, setPendingForkWinner] = createSignal<number | undefined>(undefined)
+  // Model reveal after voting: maps sessionID → model name (as returned by backend)
+  const [modelReveal, setModelReveal] = createSignal<Record<string, string> | undefined>(undefined)
   const [lastToggleAt, setLastToggleAt] = createSignal(0)
   const [autoDuelDone, setAutoDuelDone] = createSignal(false)
 
-  // Preview state: tracks which side is currently previewed in the user's repo
-  const [previewedSide, setPreviewedSide] = createSignal<"left" | "right" | null>(null)
+  // Preview state: tracks which slot is currently previewed in the user's repo
+  const [previewedSlot, setPreviewedSlot] = createSignal<number | null>(null)
   const [previewInFlight, setPreviewInFlight] = createSignal(false)
 
-  // Which side the user is currently viewing in duel mode
-  const [viewingSide, setViewingSide] = createSignal<"left" | "right">("left")
+  // Which slot the user is currently viewing in duel mode
+  const [viewingSlot, setViewingSlot] = createSignal(0)
 
   // Animated ellipsis for "Running" status
   const [dotCount, setDotCount] = createSignal(1)
@@ -240,15 +216,14 @@ export function Session() {
   onCleanup(() => clearInterval(dotTimer))
   const runningText = () => ("Running" + ".".repeat(dotCount())).padEnd(10)
 
-  const [controlSide, setControlSide] = createSignal<"left" | "right">("right")
-  const [scrollToBottomLeft, setScrollToBottomLeft] = createSignal<(() => void) | undefined>(undefined)
-  const [scrollToBottomRight, setScrollToBottomRight] = createSignal<(() => void) | undefined>(undefined)
+  const [controlSlot, setControlSlot] = createSignal(1)
+  const [scrollToBottomFns, setScrollToBottomFns] = createSignal<((() => void) | undefined)[]>([])
 
   const promptSessionID = createMemo(() => route.sessionID)
-  // In follow-up mode, route prompt to the viewed side's session
+  // In follow-up mode, route prompt to the viewed slot's session
   const activePromptSessionID = createMemo(() => {
-    if (awaitingVote() && isSplit() && viewingSide() === "right" && route.rightSessionID) {
-      return route.rightSessionID
+    if (awaitingVote() && isSplit() && viewingSlot() > 0 && route.opponentSessionIDs) {
+      return route.opponentSessionIDs[viewingSlot() - 1]
     }
     return route.sessionID
   })
@@ -280,9 +255,9 @@ export function Session() {
     if (!s) return []
     if (s.parentID) return sync.data.permission[promptSessionID()] ?? []
     const parentID = s.parentID ?? s.id
-    const rightID = route.rightSessionID
+    const opponentIDs = new Set(route.opponentSessionIDs ?? [])
     const children = sync.data.session
-      .filter((x) => (x.parentID === parentID || x.id === parentID) && x.id !== rightID)
+      .filter((x) => (x.parentID === parentID || x.id === parentID) && !opponentIDs.has(x.id))
       .toSorted((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
     return children.flatMap((x) => sync.data.permission[x.id] ?? [])
   })
@@ -290,28 +265,27 @@ export function Session() {
   const showPrompt = createMemo(() => {
     return promptPermissions().length === 0
   })
-  // Check if the last assistant message in a session is done (has time.completed set)
-  const leftMessages = createMemo(() => sync.data.message[route.sessionID] ?? [])
-  const rightMessages = createMemo(() => (route.rightSessionID ? (sync.data.message[route.rightSessionID] ?? []) : []))
-  const leftDone = createMemo(() => {
-    const last = leftMessages().findLast((x) => x.role === "assistant")
-    return !!last?.time.completed
-  })
-  const rightDone = createMemo(() => {
-    const last = rightMessages().findLast((x) => x.role === "assistant")
-    return !!last?.time.completed
-  })
-  const bothDone = createMemo(() => leftDone() && rightDone())
+  // Check if the last assistant message in each slot's session is done
+  const slotMessages = createMemo(() =>
+    allSessionIDs().map(id => sync.data.message[id] ?? [])
+  )
+  const slotDone = createMemo(() =>
+    slotMessages().map(msgs => {
+      const last = msgs.findLast((x) => x.role === "assistant")
+      return !!last?.time.completed
+    })
+  )
+  const allDone = createMemo(() => slotDone().every(d => d))
 
-  // Show vote controls when both models are done and awaiting vote
-  const showVoteControls = createMemo(() => isSplit() && awaitingVote() && bothDone())
+  // Show vote controls when all models are done and awaiting vote
+  const showVoteControls = createMemo(() => isSplit() && awaitingVote() && allDone())
   // Disable prompt only while models are actively generating in duel mode
-  const promptDisabled = createMemo(() => isSplit() && awaitingVote() && !bothDone())
+  const promptDisabled = createMemo(() => isSplit() && awaitingVote() && !allDone())
 
   createEffect(() => {
     const split = isSplit()
     const awaiting = awaitingVote()
-    const both = bothDone()
+    const done = allDone()
     const prompt = showPrompt()
     const disabled = promptDisabled()
     const voteControls = showVoteControls()
@@ -322,11 +296,9 @@ export function Session() {
       promptDisabled: disabled,
       isSplit: split,
       awaitingVote: awaiting,
-      bothDone: both,
-      leftDone: leftDone(),
-      rightDone: rightDone(),
-      leftSessionID: route.sessionID,
-      rightSessionID: route.rightSessionID,
+      allDone: done,
+      slotDone: slotDone(),
+      sessionIDs: allSessionIDs(),
     })
   })
 
@@ -352,79 +324,70 @@ export function Session() {
     if (isSplit()) return
     duelLog.info("not split, clearing vote state")
     setAwaitingVote(false)
-    setPreviewedSide(null)
-    setViewingSide("left")
-    setLeftColor(undefined)
-    setRightColor(undefined)
+    setPreviewedSlot(null)
+    setViewingSlot(0)
+    setSlotColors([])
   })
 
   // Guard against double-fire: @opentui renderer dispatches mouseup twice when
   // capturedRenderable is set (falls through after handling captured element)
   const [voteInFlight, setVoteInFlight] = createSignal(false)
 
-  // Preview a side's changes in the user's repo (reversible)
-  const handlePreview = async (side: "left" | "right") => {
-    if (!route.rightSessionID) return
+  // Preview a slot's changes in the user's repo (reversible)
+  const handlePreview = async (slot: number) => {
+    if (!route.opponentSessionIDs?.length) return
     if (previewInFlight()) return
-    if (previewedSide() === side) return
+    if (previewedSlot() === slot) return
     setPreviewInFlight(true)
     const duelId = currentDuelId()
-    duelLog.info("handlePreview", { side, duelId, previousPreview: previewedSide() })
+    duelLog.info("handlePreview", { slot, duelId, previousPreview: previewedSlot() })
 
     if (duelId) {
       // Snapshot original files on first preview (lazy — worktrees are guaranteed to exist by now)
-      await snapshotOriginalFiles(duelId, process.cwd())
+      await snapshotOriginalFiles(duelId, process.cwd(), allSessionIDs().length)
       // Revert any existing preview before applying the new one
-      if (previewedSide() !== null) {
+      if (previewedSlot() !== null) {
         await revertToOriginal(duelId, process.cwd())
       }
-      await previewWorktree(duelId, side, process.cwd())
+      await previewWorktree(duelId, slot, process.cwd())
     }
 
-    setPreviewedSide(side)
-    setControlSide(side)
-    if (side === "left") {
-      setLeftColor(theme.success)
-      setRightColor(undefined)
-    } else {
-      setRightColor(theme.success)
-      setLeftColor(undefined)
-    }
+    setPreviewedSlot(slot)
+    setControlSlot(slot)
+    // Highlight selected slot, clear others
+    setSlotColors(allSessionIDs().map((_, i) => i === slot ? theme.success : undefined))
     setPreviewInFlight(false)
   }
 
   // Undo any preview, restoring the original code
   const handleUndo = async () => {
     if (previewInFlight()) return
-    if (previewedSide() === null) return
+    if (previewedSlot() === null) return
     setPreviewInFlight(true)
     const duelId = currentDuelId()
-    duelLog.info("handleUndo", { duelId, previousPreview: previewedSide() })
+    duelLog.info("handleUndo", { duelId, previousPreview: previewedSlot() })
 
     if (duelId) {
       await revertToOriginal(duelId, process.cwd())
     }
 
-    setPreviewedSide(null)
-    setLeftColor(undefined)
-    setRightColor(undefined)
+    setPreviewedSlot(null)
+    setSlotColors([])
     setPreviewInFlight(false)
   }
 
-  // Submit the vote for the currently previewed side
+  // Submit the vote for the currently previewed slot
   const finalizeVote = async () => {
-    const side = previewedSide()
-    if (!side || !route.rightSessionID) return
+    const slot = previewedSlot()
+    if (slot === null || !route.opponentSessionIDs?.length) return
     if (voteInFlight()) return
     setVoteInFlight(true)
-    const winningID = side === "left" ? route.sessionID : route.rightSessionID
-    const losingID = side === "left" ? route.rightSessionID : route.sessionID
+    const winningID = allSessionIDs()[slot]
     const duelId = currentDuelId()
     duelLog.info("finalizeVote", {
-      side,
+      slot,
       duelSessionId: duelId,
       winningSessionID: winningID,
-      losingSessionID: losingID,
     })
 
     // Submit vote to backend
@@ -444,14 +407,17 @@ export function Session() {
         duelSessionId: duelId,
         winnerModel: result.winner,
         models: result.models,
+        modelKeys: result.models ? Object.keys(result.models) : [],
+        allSessionIDs: allSessionIDs(),
         ratingUpdate: result.rating_update,
       })
-      // Strip "openai/" prefix if present
+      // Strip "openai/" prefix if present and store as sessionID → cleanName map
       const cleanName = (name: string) => name.replace(/^openai\//, "")
-      setModelReveal({
-        left: cleanName(result.models[route.sessionID] ?? "unknown"),
-        right: cleanName(result.models[route.rightSessionID!] ?? "unknown"),
-      })
+      const reveal: Record<string, string> = {}
+      for (const [sid, model] of Object.entries(result.models ?? {})) {
+        reveal[sid] = cleanName(model as string)
+      }
+      setModelReveal(reveal)
       // Clean up snapshot — the preview is now permanent
       clearSnapshot(duelId)
     } else {
@@ -461,11 +427,11 @@ export function Session() {
     // No need to apply worktree — it's already previewed in place
 
     setLastChosenSessionID(winningID)
-    setViewingSide(side)
-    setControlSide(side)
-    // Store the winning side so the fork happens when the next message is sent
-    setPendingForkWinner(side)
-    setPreviewedSide(null)
+    setViewingSlot(slot)
+    setControlSlot(slot)
+    // Store the winning slot so the fork happens when the next message is sent
+    setPendingForkWinner(slot)
+    setPreviewedSlot(null)
     setAwaitingVote(false)
     setVoteInFlight(false)
 
@@ -489,11 +455,11 @@ export function Session() {
     try {
       const fork = await sdk.client.session.fork({ sessionID: route.sessionID })
       if (!fork.data) throw new Error("No session id returned")
-      duelLog.info("enterDuel forked", { leftSessionID: route.sessionID, rightSessionID: fork.data.id })
+      duelLog.info("enterDuel forked", { primarySessionID: route.sessionID, opponentSessionID: fork.data.id })
       navigate({
         type: "session",
         sessionID: route.sessionID,
-        rightSessionID: fork.data.id,
+        opponentSessionIDs: [fork.data.id],
       })
     } catch (e) {
       toast.show({
@@ -525,38 +491,37 @@ export function Session() {
   })
 
   const exitDuel = async () => {
-    if (!route.rightSessionID) return
-    // Use last voted session, or default to left side if no vote happened
+    if (!route.opponentSessionIDs?.length) return
+    // Use last voted session, or default to slot 0 if no vote happened
     const selectedID = lastChosenSessionID() ?? route.sessionID
     duelLog.info("exitDuel", {
       selectedSessionID: selectedID,
       hadVote: !!lastChosenSessionID(),
-      previewedSide: previewedSide(),
+      previewedSlot: previewedSlot(),
     })
 
     // Revert any active preview before exiting
     const duelId = currentDuelId()
-    if (previewedSide() !== null && duelId) {
+    if (previewedSlot() !== null && duelId) {
       await revertToOriginal(duelId, process.cwd())
     }
     if (duelId) {
       clearSnapshot(duelId)
     }
 
-    // Clear all pairwise state immediately
+    // Clear all duel state
     setAwaitingVote(false)
     setPendingForkWinner(undefined)
-    setPreviewedSide(null)
-    setViewingSide("left")
+    setPreviewedSlot(null)
+    setViewingSlot(0)
     setModelReveal(undefined)
-    setLeftColor(undefined)
-    setRightColor(undefined)
+    setSlotColors([])
     setLastChosenSessionID(undefined)
 
     navigate({
       type: "session",
       sessionID: selectedID,
-      rightSessionID: undefined,
+      opponentSessionIDs: undefined,
     })
   }
 
@@ -597,44 +562,29 @@ export function Session() {
         <box flexDirection="column" flexGrow={1}>
           <Show when={isSplit()}>
             <box flexDirection="row" justifyContent="center" paddingTop={1} paddingBottom={1} flexShrink={0}>
-              <box width={58} flexDirection="row" gap={1}>
-                <Show when={pendingForkWinner() && modelReveal()} fallback={
-                  <>
-                    <box
-                      flexGrow={1}
-                      border={["left", "right", "top", "bottom"]}
-                      borderColor={viewingSide() === "left" ? theme.success : theme.border}
-                      paddingLeft={1}
-                      paddingRight={1}
-                      onMouseUp={() => {
-                        duelLog.info("tab clicked: left", { timestamp: Date.now() })
-                        setViewingSide("left")
-                        setControlSide("left")
-                      }}
-                    >
-                      <box flexDirection="column">
-                        <text fg={viewingSide() === "left" ? theme.success : theme.text}>Left</text>
-                        <text fg={theme.textMuted}>{(leftDone() ? "Completed" : runningText()).padEnd(10)}</text>
+              <box width={Math.min(58, allSessionIDs().length * 20)} flexDirection="row" gap={1}>
+                <Show when={pendingForkWinner() !== undefined && modelReveal()} fallback={
+                  <For each={allSessionIDs()}>
+                    {(sessionID, index) => (
+                      <box
+                        flexGrow={1}
+                        border={["left", "right", "top", "bottom"]}
+                        borderColor={viewingSlot() === index() ? theme.success : theme.border}
+                        paddingLeft={1}
+                        paddingRight={1}
+                        onMouseUp={() => {
+                          duelLog.info("tab clicked", { slot: index(), timestamp: Date.now() })
+                          setViewingSlot(index())
+                          setControlSlot(index())
+                        }}
+                      >
+                        <box flexDirection="column">
+                          <text fg={viewingSlot() === index() ? theme.success : theme.text}>Slot {index() + 1}</text>
+                          <text fg={theme.textMuted}>{(slotDone()[index()] ? "Completed" : runningText()).padEnd(10)}</text>
+                        </box>
                       </box>
-                    </box>
-                    <box
-                      flexGrow={1}
-                      border={["left", "right", "top", "bottom"]}
-                      borderColor={viewingSide() === "right" ? theme.success : theme.border}
-                      paddingLeft={1}
-                      paddingRight={1}
-                      onMouseUp={() => {
-                        duelLog.info("tab clicked: right", { timestamp: Date.now() })
-                        setViewingSide("right")
-                        setControlSide("right")
-                      }}
-                    >
-                      <box flexDirection="column">
-                        <text fg={viewingSide() === "right" ? theme.success : theme.text}>Right</text>
-                        <text fg={theme.textMuted}>{(rightDone() ? "Completed" : runningText()).padEnd(10)}</text>
-                      </box>
-                    </box>
-                  </>
+                    )}
+                  </For>
                 }>
                   <box
                     flexGrow={1}
@@ -644,7 +594,7 @@ export function Session() {
                     paddingRight={1}
                   >
                     <box flexDirection="column">
-                      <text fg={theme.success}>{modelReveal()![pendingForkWinner()!]}</text>
+                      <text fg={theme.success}>{modelReveal()![allSessionIDs()[pendingForkWinner()!]]}</text>
                       <text fg={theme.textMuted}>Completed</text>
                     </box>
                   </box>
@@ -653,28 +603,21 @@ export function Session() {
             </box>
           </Show>
           <box flexDirection="row" flexGrow={1}>
-            <Show when={!isSplit() || viewingSide() === "left"}>
-              <SessionPane
-                sessionID={route.sessionID}
-                width={isSplit() ? dimensions().width : leftPaneWidth()}
-                isSplit={isSplit()}
-                side="left"
-                controlSide={controlSide()}
-                otherSessionID={route.rightSessionID}
-                onScrollToBottom={(fn) => setScrollToBottomLeft(() => fn)}
-              />
-            </Show>
-            <Show when={isSplit() && viewingSide() === "right" && route.rightSessionID}>
-              <SessionPane
-                sessionID={route.rightSessionID!}
-                width={dimensions().width}
-                isSplit={isSplit()}
-                side="right"
-                controlSide={controlSide()}
-                otherSessionID={route.sessionID}
-                onScrollToBottom={(fn) => setScrollToBottomRight(() => fn)}
-              />
-            </Show>
+            <SessionPane
+              sessionID={allSessionIDs()[viewingSlot()] ?? route.sessionID}
+              width={dimensions().width}
+              isSplit={isSplit()}
+              slot={viewingSlot()}
+              controlSlot={controlSlot()}
+              opponentSessionIDs={route.opponentSessionIDs}
+              onScrollToBottom={(fn) => {
+                setScrollToBottomFns(prev => {
+                  const next = [...prev]
+                  next[viewingSlot()] = fn
+                  return next
+                })
+              }}
+            />
           </box>
           <Show when={showPrompt()}>
             <box
@@ -689,33 +632,25 @@ export function Session() {
                 <Show when={showVoteControls()}>
                   <box flexDirection="column" alignItems="center" paddingBottom={1} gap={0}>
                     <box flexDirection="row" justifyContent="center" gap={1}>
+                      <For each={allSessionIDs()}>
+                        {(_, index) => (
+                          <box
+                            border={["left", "right", "top", "bottom"]}
+                            borderColor={(slotColors()[index()] as string | undefined) ?? theme.border}
+                            paddingLeft={1}
+                            paddingRight={1}
+                            onMouseUp={() => {
+                              duelLog.info("preview clicked", { slot: index(), timestamp: Date.now() })
+                              handlePreview(index())
+                            }}
+                          >
+                            <text fg={(slotColors()[index()] as string | undefined) ?? theme.text}>Slot {index() + 1}</text>
+                          </box>
+                        )}
+                      </For>
                       <box
                         border={["left", "right", "top", "bottom"]}
-                        borderColor={leftColor() ?? theme.border}
-                        paddingLeft={1}
-                        paddingRight={1}
-                        onMouseUp={() => {
-                          duelLog.info("preview clicked: left", { timestamp: Date.now() })
-                          handlePreview("left")
-                        }}
-                      >
-                        <text fg={leftColor() ?? theme.text}>Left</text>
-                      </box>
-                      <box
-                        border={["left", "right", "top", "bottom"]}
-                        borderColor={rightColor() ?? theme.border}
-                        paddingLeft={1}
-                        paddingRight={1}
-                        onMouseUp={() => {
-                          duelLog.info("preview clicked: right", { timestamp: Date.now() })
-                          handlePreview("right")
-                        }}
-                      >
-                        <text fg={rightColor() ?? theme.text}>Right</text>
-                      </box>
-                      <box
-                        border={["left", "right", "top", "bottom"]}
-                        borderColor={previewedSide() !== null ? theme.border : theme.textMuted}
+                        borderColor={previewedSlot() !== null ? theme.border : theme.textMuted}
                         paddingLeft={1}
                         paddingRight={1}
                         onMouseUp={() => {
@@ -723,39 +658,44 @@ export function Session() {
                           handleUndo()
                         }}
                       >
-                        <text fg={previewedSide() !== null ? theme.text : theme.textMuted}>Undo</text>
+                        <text fg={previewedSlot() !== null ? theme.text : theme.textMuted}>Undo</text>
                       </box>
                       <box
                         border={["left", "right", "top", "bottom"]}
-                        borderColor={previewedSide() !== null ? theme.success : theme.textMuted}
+                        borderColor={previewedSlot() !== null ? theme.success : theme.textMuted}
                         paddingLeft={1}
                         paddingRight={1}
                         onMouseUp={() => {
-                          duelLog.info("submit clicked", { timestamp: Date.now(), previewedSide: previewedSide() })
+                          duelLog.info("submit clicked", { timestamp: Date.now(), previewedSlot: previewedSlot() })
                           finalizeVote()
                         }}
                       >
-                        <text fg={previewedSide() !== null ? theme.success : theme.textMuted}>Submit</text>
+                        <text fg={previewedSlot() !== null ? theme.success : theme.textMuted}>Submit</text>
                       </box>
                     </box>
                     <text fg={theme.textMuted}>
-                      {previewedSide() !== null
-                        ? `previewing ${previewedSide()} — click submit to vote`
-                        : "click left or right to preview, or type a follow-up"}
+                      {previewedSlot() !== null
+                        ? `previewing slot ${previewedSlot()! + 1} — click submit to vote`
+                        : "click a slot to preview, or type a follow-up"}
                     </text>
                   </box>
                 </Show>
                 <Show when={modelReveal() && !awaitingVote()}>
                   <box flexDirection="row" justifyContent="center" gap={1} paddingBottom={1}>
-                    <text fg={theme.textMuted}>Left: </text>
-                    <text fg={theme.text}>{modelReveal()!.left}</text>
-                    <text fg={theme.textMuted}> | Right: </text>
-                    <text fg={theme.text}>{modelReveal()!.right}</text>
+                    <For each={allSessionIDs()}>
+                      {(sessionID, index) => (
+                        <>
+                          <Show when={index() > 0}><text fg={theme.textMuted}> | </text></Show>
+                          <text fg={theme.textMuted}>Slot {index() + 1}: </text>
+                          <text fg={theme.text}>{modelReveal()![sessionID] ?? "unknown"}</text>
+                        </>
+                      )}
+                    </For>
                   </box>
                 </Show>
                 <Prompt
                   visible={true}
-                  broadcastSessionIDs={route.rightSessionID && !awaitingVote() ? [route.rightSessionID] : undefined}
+                  broadcastSessionIDs={route.opponentSessionIDs?.length && !awaitingVote() ? route.opponentSessionIDs : undefined}
                   compareMode={local.model.current()?.modelID === "duel" && !awaitingVote()}
                   skipAutoSend={!!pendingForkWinner()}
                   duelSessionId={awaitingVote() ? currentDuelId() : undefined}
@@ -766,88 +706,74 @@ export function Session() {
                     promptRef.set(r)
                   }}
                   onSubmit={async (_sessionID, _promptInfo, duelSessionId) => {
-                    const winner = pendingForkWinner()
+                    const winnerSlot = pendingForkWinner()
                     duelLog.info("onSubmit fired", {
                       duelSessionId,
-                      pendingForkWinner: winner,
-                      skipAutoSend: !!winner,
-                      leftSessionID: route.sessionID,
-                      rightSessionID: route.rightSessionID,
+                      pendingForkWinner: winnerSlot,
+                      skipAutoSend: winnerSlot !== undefined,
+                      sessionIDs: allSessionIDs(),
                     })
 
                     // When skipAutoSend is true (pending fork), we handle everything:
-                    // 1. Fork the winner
-                    // 2. Send prompt to both the winner and the fork
-                    // 3. Navigate so the fork replaces the loser
-                    if (winner && route.rightSessionID) {
-                      const winningID = winner === "left" ? route.sessionID : route.rightSessionID
-                      duelLog.info("forking winner on next message", { winner, winningSessionID: winningID })
-                      const fork = await sdk.client.session.fork({ sessionID: winningID })
-                      if (fork.data) {
-                        const forkedID = fork.data.id
-                        duelLog.info("fork created", { forkedSessionID: forkedID, fromSessionID: winningID })
+                    // 1. Fork the winner N-1 times
+                    // 2. Send prompt to winner (slot 0) and each fork (slots 1..N-1)
+                    // 3. Navigate with new opponent IDs
+                    if (winnerSlot !== undefined && route.opponentSessionIDs?.length) {
+                      const winningID = allSessionIDs()[winnerSlot]
+                      duelLog.info("forking winner on next message", { winnerSlot, winningSessionID: winningID })
 
-                        const nonTextParts = _promptInfo.parts.filter((part) => part.type !== "text")
-                        const parts = [
-                          { id: Identifier.ascending("part"), type: "text" as const, text: _promptInfo.input },
-                          ...nonTextParts.map((x) => ({ id: Identifier.ascending("part"), ...x })),
-                        ]
-                        const promptPayload = {
-                          agent: local.agent.current().name,
-                          model: local.model.current()!,
-                          variant: local.model.variant.current(),
-                          sessionTrackingNumber: getSessionTrackingNumber(),
-                          parts,
-                          duelSessionId,
-                        }
+                      const nonTextParts = _promptInfo.parts.filter((part) => part.type !== "text")
+                      const parts = [
+                        { id: Identifier.ascending("part"), type: "text" as const, text: _promptInfo.input },
+                        ...nonTextParts.map((x) => ({ id: Identifier.ascending("part"), ...x })),
+                      ]
+                      const promptPayload = {
+                        agent: local.agent.current().name,
+                        model: local.model.current()!,
+                        variant: local.model.variant.current(),
+                        sessionTrackingNumber: getSessionTrackingNumber(),
+                        parts,
+                        duelSessionId,
+                      }
 
-                        // Send prompt to both: the original winner and the fork
-                        const winnerSide = winner as "left" | "right"
-                        const forkSide = winner === "left" ? ("right" as const) : ("left" as const)
-                        duelLog.info("sending prompt to winner", {
-                          sessionID: winningID,
-                          duelSessionId,
-                          duelSide: winnerSide,
-                        })
-                        sdk.client.session.prompt({
-                          sessionID: winningID,
-                          messageID: Identifier.ascending("message"),
-                          ...promptPayload,
-                          duelSide: winnerSide,
-                        })
-                        duelLog.info("sending prompt to fork", {
-                          sessionID: forkedID,
-                          duelSessionId,
-                          duelSide: forkSide,
-                        })
-                        sdk.client.session.prompt({
-                          sessionID: forkedID,
-                          messageID: Identifier.ascending("message"),
-                          ...promptPayload,
-                          duelSide: forkSide,
-                        })
+                      // Send prompt to winner (slot 0)
+                      const forkDuelCount = getDuelCount()
+                      duelLog.info("sending prompt to winner", { sessionID: winningID, duelSessionId, duelSlot: 0, duelSlotCount: forkDuelCount })
+                      sdk.client.session.prompt({
+                        sessionID: winningID,
+                        messageID: Identifier.ascending("message"),
+                        ...promptPayload,
+                        duelSlot: 0,
+                        duelSlotCount: forkDuelCount,
+                      })
 
-                        // Navigate: the fork replaces the losing side
-                        if (winner === "left") {
-                          navigate({
-                            type: "session",
-                            sessionID: route.sessionID,
-                            rightSessionID: forkedID,
-                          })
-                        } else {
-                          navigate({
-                            type: "session",
+                      // Fork winner N-1 times (use current duelCount, not previous round's opponent count)
+                      const newOpponentIDs: string[] = []
+                      for (let i = 0; i < forkDuelCount - 1; i++) {
+                        const fork = await sdk.client.session.fork({ sessionID: winningID })
+                        if (fork.data) {
+                          const forkedID = fork.data.id
+                          newOpponentIDs.push(forkedID)
+                          duelLog.info("sending prompt to fork", { sessionID: forkedID, duelSessionId, duelSlot: i + 1, duelSlotCount: forkDuelCount })
+                          sdk.client.session.prompt({
                             sessionID: forkedID,
-                            rightSessionID: route.rightSessionID,
+                            messageID: Identifier.ascending("message"),
+                            ...promptPayload,
+                            duelSlot: i + 1,
+                            duelSlotCount: forkDuelCount,
                           })
                         }
                       }
+
+                      navigate({
+                        type: "session",
+                        sessionID: winningID,
+                        opponentSessionIDs: newOpponentIDs,
+                      })
                       setPendingForkWinner(undefined)
                     }
 
-                    const scrollFn = isSplit()
-                      ? (viewingSide() === "right" ? scrollToBottomRight() : scrollToBottomLeft())
-                      : scrollToBottomLeft()
+                    const scrollFn = scrollToBottomFns()[viewingSlot()]
                     scrollFn?.()
                     if (isSplit()) {
                       if (duelSessionId && duelSessionId !== currentDuelId()) {
@@ -855,14 +781,13 @@ export function Session() {
                         duelLog.info("prompt submitted in split mode, setting awaitingVote=true", { duelSessionId })
                         setCurrentDuelId(duelSessionId)
                         setModelReveal(undefined)
-                        setLeftColor(undefined)
-                        setRightColor(undefined)
-                        setPreviewedSide(null)
-                        setViewingSide("left")
+                        setSlotColors([])
+                        setPreviewedSlot(null)
+                        setViewingSlot(0)
                         setAwaitingVote(true)
                       } else {
-                        // Follow-up message to one side — keep vote state intact
-                        duelLog.info("follow-up submitted to one side", { sessionID: _sessionID, duelSessionId, viewingSide: viewingSide() })
+                        // Follow-up message to one slot — keep vote state intact
+                        duelLog.info("follow-up submitted to one slot", { sessionID: _sessionID, duelSessionId, viewingSlot: viewingSlot() })
                       }
                     }
                   }}
@@ -882,9 +807,9 @@ function SessionPane(props: {
   sessionID: string
   width: number
   isSplit: boolean
-  side: "left" | "right"
-  controlSide: "left" | "right"
-  otherSessionID?: string
+  slot: number
+  controlSlot: number
+  opponentSessionIDs?: string[]
   onScrollToBottom?: (fn: () => void) => void
 }) {
   const sync = useSync()
@@ -894,7 +819,7 @@ function SessionPane(props: {
   const route = useRouteData("session")
   const { navigate } = useRoute()
 
-  duelLog.info("SessionPane mount", { side: props.side, sessionID: props.sessionID })
+  duelLog.info("SessionPane mount", { slot: props.slot, sessionID: props.sessionID })
 
   const session = createMemo(() => sync.session.get(props.sessionID))
   const parentCtx = use()
@@ -1742,7 +1667,7 @@ function SessionPane(props: {
       const status = toolPart.state.status
       if (status === "completed" || status === "error") {
         const duration = (Date.now() - action.startTime) / 1000
-        logToSide(props.side, `Action ${status === "completed" ? "completed" : "failed"} in ${duration.toFixed(2)}s`)
+        logToSlot(props.slot, `Action ${status === "completed" ? "completed" : "failed"} in ${duration.toFixed(2)}s`)
 
         // Remove from tracking
         setTrackedActions((prev) => prev.filter((a) => a.toolCallID !== action.toolCallID))
@@ -1875,9 +1800,9 @@ function SessionPane(props: {
             <Show when={permissions().length > 0}>
               <PermissionPrompt
                 request={permissions()[0]}
-                active={props.controlSide === props.side}
-                side={props.side}
-                otherSessionID={props.otherSessionID}
+                active={props.controlSlot === props.slot}
+                slot={props.slot}
+                opponentSessionIDs={props.opponentSessionIDs}
                 onPermissionHandled={(action) => setTrackedActions((prev) => [...prev, action])}
               />
             </Show>

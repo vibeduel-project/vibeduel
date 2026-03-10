@@ -31,11 +31,11 @@ function filetype(input?: string) {
 
 const duelLog = Log.create({ service: "duel" })
 
-function logToSide(side: "left" | "right", text: string) {
-  duelLog.info(text, { side })
+function logToSlot(slot: number, text: string) {
+  duelLog.info(text, { slot })
 }
 
-const promptStartTimes: Record<string, number> = {}
+const promptStartTimes: Record<number, number> = {}
 
 function EditBody(props: { request: PermissionRequest }) {
   const { theme, syntax } = useTheme()
@@ -110,8 +110,8 @@ function TextBody(props: { title: string; description?: string; icon?: string })
 export function PermissionPrompt(props: {
   request: PermissionRequest
   active: boolean
-  side: "left" | "right"
-  otherSessionID?: string
+  slot: number
+  opponentSessionIDs?: string[]
   onPermissionHandled?: (action: { toolCallID: string; messageID: string; startTime: number }) => void
 }) {
   const sdk = useSDK()
@@ -121,7 +121,7 @@ export function PermissionPrompt(props: {
     if (autoReplied.done) return
     if (props.request.permission === "edit") return
     setAutoReplied("done", true)
-    logToSide(props.side, `Auto-allowing permission: ${props.request.permission} (${props.request.id})`)
+    logToSlot(props.slot, `Auto-allowing permission: ${props.request.permission} (${props.request.id})`)
     if (props.onPermissionHandled && props.request.tool) {
       props.onPermissionHandled({
         toolCallID: props.request.tool.callID,
@@ -155,22 +155,21 @@ export function PermissionPrompt(props: {
 
   createEffect(() => {
     const now = Date.now()
-    promptStartTimes[props.side] = now
+    promptStartTimes[props.slot] = now
 
-    logToSide(props.side, `Permission Request: ${props.request.permission} (${props.request.id})`)
+    logToSlot(props.slot, `Permission Request: ${props.request.permission} (${props.request.id})`)
 
-    const otherSide = props.side === "left" ? "right" : "left"
-    const otherStart = promptStartTimes[otherSide]
-
-    if (otherStart) {
+    // Check if any other slot displayed a permission prompt recently
+    for (const [otherSlot, otherStart] of Object.entries(promptStartTimes)) {
+      const otherIdx = Number(otherSlot)
+      if (otherIdx === props.slot) continue
       const diff = (now - otherStart) / 1000
-      logToSide(props.side, `Other side (${otherSide}) displayed permission prompt ${diff.toFixed(2)}s earlier.`)
-      logToSide(otherSide, `Other side (${props.side}) displayed permission prompt ${diff.toFixed(2)}s later.`)
+      logToSlot(props.slot, `Slot ${otherIdx} displayed permission prompt ${diff.toFixed(2)}s earlier.`)
     }
   })
 
   onCleanup(() => {
-    delete promptStartTimes[props.side]
+    delete promptStartTimes[props.slot]
   })
 
   return (
@@ -203,7 +202,7 @@ export function PermissionPrompt(props: {
           options={{ confirm: "Confirm", cancel: "Cancel" }}
           active={props.active}
           onSelect={(option) => {
-            logToSide(props.side, `User Response: ${option} (always flow)`)
+            logToSlot(props.slot, `User Response: ${option} (always flow)`)
             setStore("always", false)
             if (option === "cancel") return
 
@@ -279,7 +278,7 @@ export function PermissionPrompt(props: {
           options={{ once: "Allow once", always: "Allow always", reject: "Reject" }}
           active={props.active}
           onSelect={(option) => {
-            logToSide(props.side, `User Response: ${option}`)
+            logToSlot(props.slot, `User Response: ${option}`)
             if (option === "always") {
               setStore("always", true)
               return

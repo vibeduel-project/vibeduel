@@ -1,4 +1,4 @@
-import { Prompt, type PromptRef } from "@tui/component/prompt"
+import { Prompt, type PromptRef, getDuelCount } from "@tui/component/prompt"
 import { createMemo, Match, onMount, Show, Switch, createSignal } from "solid-js"
 import { useTheme } from "@tui/context/theme"
 import { Logo } from "../component/logo"
@@ -319,45 +319,53 @@ export function Home() {
               duelLog.info("home onSubmit", { sessionID, duelSessionId, isDuel: !!duelSessionId })
               if (duelSessionId) {
                 try {
-                  const rightSession = await sdk.client.session.create({ parentID: sessionID })
-                  if (rightSession.data?.id) {
-                    const rightSessionID = rightSession.data.id
+                  // Create N-1 opponent sessions
+                  const duelCount = getDuelCount()
+                  const opponentIDs: string[] = []
+                  for (let i = 0; i < duelCount - 1; i++) {
+                    const opponentSession = await sdk.client.session.create({ parentID: sessionID })
+                    if (opponentSession.data?.id) opponentIDs.push(opponentSession.data.id)
+                  }
+
+                  if (opponentIDs.length > 0) {
                     duelLog.info("home forking into split", {
                       sessionID,
-                      rightSessionID,
+                      opponentIDs,
                       duelSessionId,
-                      leftDuelSide: "left",
-                      rightDuelSide: "right",
+                      duelCount,
                     })
                     const selectedModel = local.model.current()
                     const nonTextParts = promptInfo.parts.filter((part) => part.type !== "text")
 
-                    sdk.client.session.prompt({
-                      sessionID: rightSessionID,
-                      messageID: Identifier.ascending("message"),
-                      agent: local.agent.current().name,
-                      model: selectedModel!,
-                      variant: local.model.variant.current(),
-                      sessionTrackingNumber: getSessionTrackingNumber(),
-                      parts: [
-                        {
-                          id: Identifier.ascending("part"),
-                          type: "text" as const,
-                          text: promptInfo.input,
-                        },
-                        ...nonTextParts.map((x) => ({
-                          id: Identifier.ascending("part"),
-                          ...x,
-                        })),
-                      ],
-                      duelSessionId,
-                      duelSide: "right" as const,
-                    })
+                    for (let i = 0; i < opponentIDs.length; i++) {
+                      sdk.client.session.prompt({
+                        sessionID: opponentIDs[i],
+                        messageID: Identifier.ascending("message"),
+                        agent: local.agent.current().name,
+                        model: selectedModel!,
+                        variant: local.model.variant.current(),
+                        sessionTrackingNumber: getSessionTrackingNumber(),
+                        parts: [
+                          {
+                            id: Identifier.ascending("part"),
+                            type: "text" as const,
+                            text: promptInfo.input,
+                          },
+                          ...nonTextParts.map((x) => ({
+                            id: Identifier.ascending("part"),
+                            ...x,
+                          })),
+                        ],
+                        duelSessionId,
+                        duelSlot: i + 1,
+                        duelSlotCount: duelCount,
+                      })
+                    }
 
                     navigate({
                       type: "session",
                       sessionID,
-                      rightSessionID,
+                      opponentSessionIDs: opponentIDs,
                       duelSessionId,
                     })
                     return

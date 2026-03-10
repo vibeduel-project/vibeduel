@@ -20,7 +20,7 @@ const duelWorktrees = new Map<string, string>()
 const createdWorktrees = new Set<string>()
 
 // In-flight creation promises to prevent race conditions
-const inflightCreations = new Map<string, Promise<{ left: string; right: string }>>()
+const inflightCreations = new Map<string, Promise<string[]>>()
 
 export function setDuel(sessionID: string, duelSessionId: string): void {
   log.info("setDuel", { sessionID, duelSessionId })
@@ -50,13 +50,12 @@ export function clearDuelWorktree(sessionID: string): void {
   duelWorktrees.delete(sessionID)
 }
 
-export async function createDuelWorktrees(duelId: string, repoPath: string): Promise<{ left: string; right: string }> {
-  const left = `${DUEL_WORKTREE_BASE}/${duelId}/left`
-  const right = `${DUEL_WORKTREE_BASE}/${duelId}/right`
+export async function createDuelWorktrees(duelId: string, repoPath: string, slotCount: number = 2): Promise<string[]> {
+  const paths = Array.from({ length: slotCount }, (_, i) => `${DUEL_WORKTREE_BASE}/${duelId}/${i}`)
 
   if (createdWorktrees.has(duelId)) {
-    log.info("createDuelWorktrees: already exist, reusing", { duelId, left, right })
-    return { left, right }
+    log.info("createDuelWorktrees: already exist, reusing", { duelId, slotCount, paths })
+    return paths
   }
 
   // If another call is already creating these worktrees, wait for it
@@ -66,7 +65,7 @@ export async function createDuelWorktrees(duelId: string, repoPath: string): Pro
     return inflight
   }
 
-  const promise = doCreateWorktrees(duelId, repoPath, left, right)
+  const promise = doCreateWorktrees(duelId, repoPath, paths)
   inflightCreations.set(duelId, promise)
   try {
     return await promise
@@ -75,16 +74,17 @@ export async function createDuelWorktrees(duelId: string, repoPath: string): Pro
   }
 }
 
-async function doCreateWorktrees(duelId: string, repoPath: string, left: string, right: string): Promise<{ left: string; right: string }> {
-  log.info("createDuelWorktrees: creating new worktrees", { duelId, repoPath, left, right })
+async function doCreateWorktrees(duelId: string, repoPath: string, paths: string[]): Promise<string[]> {
+  log.info("createDuelWorktrees: creating new worktrees", { duelId, repoPath, slotCount: paths.length, paths })
 
   // Clean up stale worktrees from previous app runs
   const baseDir = `${DUEL_WORKTREE_BASE}/${duelId}`
   log.info("wt_latency: before stale cleanup check", { ts: Date.now(), duelId })
   if (await $`test -d ${baseDir}`.quiet().nothrow().then(r => r.exitCode === 0)) {
     log.info("createDuelWorktrees: cleaning up stale worktrees", { duelId, baseDir })
-    await $`git worktree remove ${left} --force`.cwd(repoPath).quiet().nothrow()
-    await $`git worktree remove ${right} --force`.cwd(repoPath).quiet().nothrow()
+    for (const p of paths) {
+      await $`git worktree remove ${p} --force`.cwd(repoPath).quiet().nothrow()
+    }
     await $`rm -rf ${baseDir}`.quiet().nothrow()
     await $`git worktree prune`.cwd(repoPath).quiet().nothrow()
   }
@@ -96,14 +96,12 @@ async function doCreateWorktrees(duelId: string, repoPath: string, left: string,
   log.info("wt_latency: after source dump", { ts: Date.now(), duelId })
   log.info("createDuelWorktrees: source directory contents", { duelId, repoPath, dump: sourceDump.trim() })
 
-  // Create worktrees from HEAD, then overlay only uncommitted/modified files
-  // so worktrees match what's on disk without copying the entire directory
-  log.info("wt_latency: before git worktree add both", { ts: Date.now(), duelId })
-  await Promise.all([
-    $`git worktree add ${left} HEAD --detach`.cwd(repoPath).quiet(),
-    $`git worktree add ${right} HEAD --detach`.cwd(repoPath).quiet(),
-  ])
-  log.info("wt_latency: after git worktree add both", { ts: Date.now(), duelId })
+  // Create all worktrees from HEAD in parallel
+  log.info("wt_latency: before git worktree add all", { ts: Date.now(), duelId })
+  await Promise.all(
+    paths.map(p => $`git worktree add ${p} HEAD --detach`.cwd(repoPath).quiet())
+  )
+  log.info("wt_latency: after git worktree add all", { ts: Date.now(), duelId })
 
   // Get list of files that differ from HEAD (modified, untracked, deleted)
   log.info("wt_latency: before git diff", { ts: Date.now(), duelId })
@@ -122,31 +120,25 @@ async function doCreateWorktrees(duelId: string, repoPath: string, left: string,
     const srcPath = `${repoPath}/${file}`
     const srcExists = await Bun.file(srcPath).exists()
     if (srcExists) {
-      // Copy modified/untracked file to both worktrees
-      await $`mkdir -p ${left}/${file.substring(0, file.lastIndexOf("/") + 1)}`.quiet().nothrow()
-      await $`mkdir -p ${right}/${file.substring(0, file.lastIndexOf("/") + 1)}`.quiet().nothrow()
-      await $`cp ${srcPath} ${left}/${file}`.quiet()
-      await $`cp ${srcPath} ${right}/${file}`.quiet()
+      for (const p of paths) {
+        await $`mkdir -p ${p}/${file.substring(0, file.lastIndexOf("/") + 1)}`.quiet().nothrow()
+        await $`cp ${srcPath} ${p}/${file}`.quiet()
+      }
     } else {
-      // File was deleted in working dir — remove from worktrees too
-      await $`rm -f ${left}/${file}`.quiet().nothrow()
-      await $`rm -f ${right}/${file}`.quiet().nothrow()
+      for (const p of paths) {
+        await $`rm -f ${p}/${file}`.quiet().nothrow()
+      }
     }
   }
   log.info("wt_latency: after file overlay loop", { ts: Date.now(), duelId })
 
-  log.info("wt_latency: before left dump", { ts: Date.now(), duelId })
-  const leftDump = await $`find ${left} -maxdepth 2 -type f -not -path '*/\.git/*' -exec sh -c 'echo "=== {} ===" && cat "{}"' \;`.quiet().text()
-  log.info("wt_latency: after left dump", { ts: Date.now(), duelId })
-  log.info("createDuelWorktrees: left worktree created", { duelId, left, dirtyCount: dirtyFiles.length, dump: leftDump.trim() })
-
-  log.info("wt_latency: before right dump", { ts: Date.now(), duelId })
-  const rightDump = await $`find ${right} -maxdepth 2 -type f -not -path '*/\.git/*' -exec sh -c 'echo "=== {} ===" && cat "{}"' \;`.quiet().text()
-  log.info("wt_latency: after right dump", { ts: Date.now(), duelId })
-  log.info("createDuelWorktrees: right worktree created", { duelId, right, dirtyCount: dirtyFiles.length, dump: rightDump.trim() })
+  for (let i = 0; i < paths.length; i++) {
+    const dump = await $`find ${paths[i]} -maxdepth 2 -type f -not -path '*/\.git/*' -exec sh -c 'echo "=== {} ===" && cat "{}"' \;`.quiet().text()
+    log.info(`createDuelWorktrees: slot ${i} worktree created`, { duelId, slot: i, path: paths[i], dirtyCount: dirtyFiles.length, dump: dump.trim() })
+  }
 
   createdWorktrees.add(duelId)
-  return { left, right }
+  return paths
 }
 
 // Returns the list of files changed in a worktree relative to HEAD
@@ -159,12 +151,12 @@ async function getChangedFiles(worktreePath: string): Promise<string[]> {
   ])].filter(f => f.length > 0)
 }
 
-export async function applyWinnerWorktree(duelId: string, winningSide: "left" | "right", repoPath: string): Promise<void> {
-  const worktree = `${DUEL_WORKTREE_BASE}/${duelId}/${winningSide}`
-  log.info("applyWinnerWorktree: copying winner changes back", { duelId, winningSide, worktree, repoPath })
+export async function applyWinnerWorktree(duelId: string, winnerSlot: number, repoPath: string): Promise<void> {
+  const worktree = `${DUEL_WORKTREE_BASE}/${duelId}/${winnerSlot}`
+  log.info("applyWinnerWorktree: copying winner changes back", { duelId, winnerSlot, worktree, repoPath })
 
   const changedFiles = await getChangedFiles(worktree)
-  log.info("applyWinnerWorktree: changed files", { duelId, winningSide, count: changedFiles.length, files: changedFiles })
+  log.info("applyWinnerWorktree: changed files", { duelId, winnerSlot, count: changedFiles.length, files: changedFiles })
 
   for (const file of changedFiles) {
     const srcPath = `${worktree}/${file}`
@@ -180,29 +172,24 @@ export async function applyWinnerWorktree(duelId: string, winningSide: "left" | 
     }
   }
 
-  log.info("applyWinnerWorktree: done", { duelId, winningSide, filesCopied: changedFiles.length })
+  log.info("applyWinnerWorktree: done", { duelId, winnerSlot, filesCopied: changedFiles.length })
 }
 
 // In-memory snapshots of original file contents before any preview is applied
 // Maps duelId -> (relative file path -> original content or null if file didn't exist)
 const originalSnapshots = new Map<string, Map<string, Buffer | null>>()
 
-// Snapshot the original state of all files that either side changed
-export async function snapshotOriginalFiles(duelId: string, repoPath: string): Promise<void> {
+// Snapshot the original state of all files that any slot changed
+export async function snapshotOriginalFiles(duelId: string, repoPath: string, slotCount: number = 2): Promise<void> {
   if (originalSnapshots.has(duelId)) {
     log.info("snapshotOriginalFiles: already snapshotted", { duelId })
     return
   }
 
-  const left = `${DUEL_WORKTREE_BASE}/${duelId}/left`
-  const right = `${DUEL_WORKTREE_BASE}/${duelId}/right`
-
-  const [leftFiles, rightFiles] = await Promise.all([
-    getChangedFiles(left),
-    getChangedFiles(right),
-  ])
-  const allFiles = [...new Set([...leftFiles, ...rightFiles])]
-  log.info("snapshotOriginalFiles: snapshotting", { duelId, count: allFiles.length, files: allFiles })
+  const slotPaths = Array.from({ length: slotCount }, (_, i) => `${DUEL_WORKTREE_BASE}/${duelId}/${i}`)
+  const fileArrays = await Promise.all(slotPaths.map(p => getChangedFiles(p)))
+  const allFiles = [...new Set(fileArrays.flat())]
+  log.info("snapshotOriginalFiles: snapshotting", { duelId, slotCount, count: allFiles.length, files: allFiles })
 
   const snapshot = new Map<string, Buffer | null>()
   for (const file of allFiles) {
@@ -220,13 +207,13 @@ export async function snapshotOriginalFiles(duelId: string, repoPath: string): P
   log.info("snapshotOriginalFiles: done", { duelId, fileCount: snapshot.size })
 }
 
-// Preview a side's worktree by copying its changes into the repo (reversible via revertToOriginal)
-export async function previewWorktree(duelId: string, side: "left" | "right", repoPath: string): Promise<void> {
-  const worktree = `${DUEL_WORKTREE_BASE}/${duelId}/${side}`
-  log.info("previewWorktree: applying preview", { duelId, side, worktree, repoPath })
+// Preview a slot's worktree by copying its changes into the repo (reversible via revertToOriginal)
+export async function previewWorktree(duelId: string, slot: number, repoPath: string): Promise<void> {
+  const worktree = `${DUEL_WORKTREE_BASE}/${duelId}/${slot}`
+  log.info("previewWorktree: applying preview", { duelId, slot, worktree, repoPath })
 
   const changedFiles = await getChangedFiles(worktree)
-  log.info("previewWorktree: changed files", { duelId, side, count: changedFiles.length, files: changedFiles })
+  log.info("previewWorktree: changed files", { duelId, slot, count: changedFiles.length, files: changedFiles })
 
   for (const file of changedFiles) {
     const srcPath = `${worktree}/${file}`
@@ -240,7 +227,7 @@ export async function previewWorktree(duelId: string, side: "left" | "right", re
     }
   }
 
-  log.info("previewWorktree: done", { duelId, side, fileCount: changedFiles.length })
+  log.info("previewWorktree: done", { duelId, slot, fileCount: changedFiles.length })
 }
 
 // Revert the repo to the original state from the snapshot

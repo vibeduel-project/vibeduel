@@ -1235,7 +1235,8 @@ export class Session extends HeyApiClient {
       system?: string
       variant?: string
       duelSessionId?: string
-      duelSide?: "left" | "right"
+      duelSlot?: number
+      duelSlotCount?: number
       sessionTrackingNumber?: string
       parts?: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
     },
@@ -1256,7 +1257,8 @@ export class Session extends HeyApiClient {
             { in: "body", key: "system" },
             { in: "body", key: "variant" },
             { in: "body", key: "duelSessionId" },
-            { in: "body", key: "duelSide" },
+            { in: "body", key: "duelSlot" },
+            { in: "body", key: "duelSlotCount" },
             { in: "body", key: "sessionTrackingNumber" },
             { in: "body", key: "parts" },
           ],
@@ -1329,7 +1331,8 @@ export class Session extends HeyApiClient {
       system?: string
       variant?: string
       duelSessionId?: string
-      duelSide?: "left" | "right"
+      duelSlot?: number
+      duelSlotCount?: number
       sessionTrackingNumber?: string
       parts?: Array<TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput>
     },
@@ -1350,7 +1353,8 @@ export class Session extends HeyApiClient {
             { in: "body", key: "system" },
             { in: "body", key: "variant" },
             { in: "body", key: "duelSessionId" },
-            { in: "body", key: "duelSide" },
+            { in: "body", key: "duelSlot" },
+            { in: "body", key: "duelSlotCount" },
             { in: "body", key: "sessionTrackingNumber" },
             { in: "body", key: "parts" },
           ],
