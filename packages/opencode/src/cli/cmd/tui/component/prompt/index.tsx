@@ -72,7 +72,7 @@ let lastSingleModel: { providerID: string; modelID: string } | undefined
 // Track whether duel was auto-entered due to low credits
 export let autoDuelPreviousModel: { providerID: string; modelID: string } | undefined
 export function clearAutoDuelPreviousModel() { autoDuelPreviousModel = undefined }
-// Duel count: how many models compete in a duel (2 or 4)
+// Duel count: how many models compete in a duel (2 or 4, no 3)
 const [duelCountSignal, setDuelCountSignal] = createSignal(2)
 export function getDuelCount() { return duelCountSignal() }
 
@@ -1092,7 +1092,7 @@ export function Prompt(props: PromptProps) {
                   e.preventDefault()
                   return
                 }
-                // Shift+Tab: cycle single → duel(2) → duel(3) → duel(4) → single
+                // Shift+Tab: cycle single → duel(2) → duel(4) → single
                 if (e.shift && e.name === "tab") {
                   e.preventDefault()
                   if (status().type !== "idle") {
@@ -1111,11 +1111,7 @@ export function Prompt(props: PromptProps) {
                     duelLog.info("shift+tab: switching to duel(2)", { from: current })
                     local.model.set({ providerID: "vibeduel", modelID: "duel" })
                   } else if (duelCountSignal() === 2) {
-                    // duel(2) → duel(3)
-                    setDuelCountSignal(3)
-                    duelLog.info("shift+tab: switching to duel(3)")
-                  } else if (duelCountSignal() === 3) {
-                    // duel(3) → duel(4)
+                    // duel(2) → duel(4)
                     setDuelCountSignal(4)
                     duelLog.info("shift+tab: switching to duel(4)")
                   } else {
