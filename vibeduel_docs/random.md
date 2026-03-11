@@ -7,7 +7,7 @@
 - the place where the SessionPanes and Prompt are is called the Session formally, but you can call it the workspace/viewport
 - session_tracking_number - one per time you start a new chat (ie if you vote and then start a new round, both rounds will have the same session_tracking_number)
 - session_id - one per duel round (ie if you vote and then start a new round, both rounds will have a different session_id)
-- x-opencode-session - one per side in a duel round - used to tell server which side is which
+- x-opencode-session (in vibeduel sometimes called sessionID) - one per side in a duel round - used to tell server which side is which. 
 
 
 theres two sets of buttons for duels. 

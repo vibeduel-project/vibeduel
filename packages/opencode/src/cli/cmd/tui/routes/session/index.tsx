@@ -250,6 +250,19 @@ export function Session() {
 
   // Shared scrollbox refs for All view scroll routing
   const allViewScrollRefs: (ScrollBoxRenderable | undefined)[] = []
+  const [selectedSlots, setSelectedSlots] = createSignal<Set<number>>(new Set())
+
+  // All view prompt: primary = first selected slot, broadcast = rest
+  const allViewPrimarySessionID = createMemo(() => {
+    const sorted = [...selectedSlots()].sort()
+    if (sorted.length === 0) return undefined
+    return allSessionIDs()[sorted[0]]
+  })
+  const allViewBroadcastSessionIDs = createMemo(() => {
+    const sorted = [...selectedSlots()].sort()
+    if (sorted.length <= 1) return undefined
+    return sorted.slice(1).map(s => allSessionIDs()[s])
+  })
 
   function getSlotAtMouse(x: number, y: number): number | null {
     const tabBarH = 6
@@ -363,13 +376,15 @@ export function Session() {
 
   // Tab bar height: paddingTop(1) + borderTop(1) + 2 text lines + borderBottom(1) + paddingBottom(1) = 6
   // Vote bar height: paddingTop(1) + button row(3) + hint text(1) = 5
+  // Prompt bar height: paddingBottom(1) + border(2) + input(1) = 4
   // Wrapper border: top(1) + bottom(1) = 2
   const allViewPaneHeight = createMemo(() => {
     const tabBarHeight = 6
     const voteBarHeight = showVoteControls() ? 5 : 0
+    const promptBarHeight = selectedSlots().size > 0 ? 4 : 0
     const wrapperBorder = 2
     const rows = allSessionIDs().length === 4 ? 2 : 1
-    return Math.floor((dimensions().height - tabBarHeight - voteBarHeight) / rows) - wrapperBorder
+    return Math.floor((dimensions().height - tabBarHeight - voteBarHeight - promptBarHeight) / rows) - wrapperBorder
   })
 
   createEffect(() => {
@@ -795,7 +810,21 @@ export function Session() {
           }>
             <box flexDirection="column" flexGrow={1} height="100%" onMouseMove={(e: any) => setMousePos({ x: e.x, y: e.y })}>
               <box flexDirection="row" flexGrow={1} height="50%">
-                <box width="50%" height="100%" border={["left", "right", "top", "bottom"]} borderColor={theme.border} overflow="hidden">
+                <box width="50%" height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(0) ? theme.success : theme.border} overflow="hidden">
+                  <box position="absolute" top={0} right={0} zIndex={200}
+                    paddingLeft={1} paddingRight={1}
+                    backgroundColor={selectedSlots().has(0) ? theme.success : theme.backgroundElement}
+                    onMouseUp={() => {
+                      setSelectedSlots(prev => {
+                        const next = new Set(prev)
+                        if (next.has(0)) next.delete(0); else next.add(0)
+                        duelLog.info("slot selector clicked", { slot: 0, selected: [...next], selectedSessionIDs: [...next].map(s => allSessionIDs()[s]) })
+                        return next
+                      })
+                    }}
+                  >
+                    <text fg={selectedSlots().has(0) ? theme.background : theme.text}>{selectedSlots().has(0) ? "✓" : "○"}</text>
+                  </box>
                   <SessionPane
                     sessionID={allSessionIDs()[0]}
                     width={Math.floor(dimensions().width / 2) - 2}
@@ -808,7 +837,21 @@ export function Session() {
                     onScrollIntercept={routeScrollToCorrectSlot}
                   />
                 </box>
-                <box width="50%" height="100%" border={["left", "right", "top", "bottom"]} borderColor={theme.border} overflow="hidden">
+                <box width="50%" height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(1) ? theme.success : theme.border} overflow="hidden">
+                  <box position="absolute" top={0} right={0} zIndex={200}
+                    paddingLeft={1} paddingRight={1}
+                    backgroundColor={selectedSlots().has(1) ? theme.success : theme.backgroundElement}
+                    onMouseUp={() => {
+                      setSelectedSlots(prev => {
+                        const next = new Set(prev)
+                        if (next.has(1)) next.delete(1); else next.add(1)
+                        duelLog.info("slot selector clicked", { slot: 1, selected: [...next], selectedSessionIDs: [...next].map(s => allSessionIDs()[s]) })
+                        return next
+                      })
+                    }}
+                  >
+                    <text fg={selectedSlots().has(1) ? theme.background : theme.text}>{selectedSlots().has(1) ? "✓" : "○"}</text>
+                  </box>
                   <SessionPane
                     sessionID={allSessionIDs()[1]}
                     width={Math.floor(dimensions().width / 2) - 2}
@@ -856,6 +899,24 @@ export function Session() {
                 <box flexShrink={0} flexDirection="column" alignItems="center" paddingTop={1} gap={0}>
                   <VoteButtons />
                   <VoteHint />
+                </box>
+              </Show>
+              <Show when={selectedSlots().size > 0}>
+                <box flexShrink={0} justifyContent="center" alignItems="center" paddingLeft={2} paddingRight={2} paddingBottom={1}>
+                  <box width="100%" maxWidth={promptMaxWidth()}>
+                    <Prompt
+                      visible={true}
+                      compareMode={false}
+                      awaitingVote={false}
+                      disabled={false}
+                      focused={isAllView()}
+                      broadcastSessionIDs={allViewBroadcastSessionIDs()}
+                      sessionID={allViewPrimarySessionID()!}
+                      onSubmit={async () => {
+                        duelLog.info("allView prompt submitted", { selectedSlots: [...selectedSlots()], primarySessionID: allViewPrimarySessionID(), broadcastSessionIDs: allViewBroadcastSessionIDs() })
+                      }}
+                    />
+                  </box>
                 </box>
               </Show>
             </box>
