@@ -198,6 +198,8 @@ export function Session() {
   const [lastChosenSessionID, setLastChosenSessionID] = createSignal<string | undefined>(undefined)
   // Deferred fork: store which slot won so the fork happens on next message submit, not immediately on vote
   const [pendingForkWinner, setPendingForkWinner] = createSignal<number | undefined>(undefined)
+  // Pre-created fork IDs: winner (slot 0) + N-1 opponent forks, created at vote time
+  const [pendingForkIDs, setPendingForkIDs] = createSignal<{ primaryID: string; opponentIDs: string[] } | undefined>(undefined)
   // Model reveal after voting: maps sessionID → model name (as returned by backend)
   const [modelReveal, setModelReveal] = createSignal<Record<string, string> | undefined>(undefined)
   const [lastToggleAt, setLastToggleAt] = createSignal(0)
@@ -252,10 +254,69 @@ export function Session() {
   const allViewScrollRefs: (ScrollBoxRenderable | undefined)[] = []
   const [selectedSlots, setSelectedSlots] = createSignal<Set<number>>(new Set())
 
+  // Maximize animation for +2 All view
+  const [maximizedSlot, setMaximizedSlot] = createSignal<number | null>(null)
+  const [maximizeTarget, setMaximizeTarget] = createSignal<number | null>(null) // target state: slot to maximize, or null to restore
+  const [maximizeProgress, setMaximizeProgress] = createSignal(0) // 0 = both equal, 1 = fully maximized
+  const MAXIMIZE_ANIM_DURATION = 200 // ms
+  const MAXIMIZE_ANIM_STEP = 16 // ~60fps
+
+  function toggleMaximize(slot: number) {
+    if (maximizedSlot() === slot) {
+      // Minimize: animate back
+      duelLog.info("maximize: minimizing", { slot })
+      setMaximizeTarget(null)
+      const startTime = Date.now()
+      const startProgress = maximizeProgress()
+      const timer = setInterval(() => {
+        const elapsed = Date.now() - startTime
+        const t = Math.min(elapsed / MAXIMIZE_ANIM_DURATION, 1)
+        const eased = 1 - (1 - t) * (1 - t) // ease-out
+        setMaximizeProgress(startProgress * (1 - eased))
+        if (t >= 1) {
+          clearInterval(timer)
+          setMaximizedSlot(null)
+          setMaximizeProgress(0)
+        }
+      }, MAXIMIZE_ANIM_STEP)
+    } else {
+      // Maximize: animate to full
+      duelLog.info("maximize: maximizing", { slot })
+      setMaximizedSlot(slot)
+      setMaximizeTarget(slot)
+      const startTime = Date.now()
+      const startProgress = maximizeProgress()
+      const timer = setInterval(() => {
+        const elapsed = Date.now() - startTime
+        const t = Math.min(elapsed / MAXIMIZE_ANIM_DURATION, 1)
+        const eased = 1 - (1 - t) * (1 - t) // ease-out
+        setMaximizeProgress(startProgress + (1 - startProgress) * eased)
+        if (t >= 1) {
+          clearInterval(timer)
+          setMaximizeProgress(1)
+        }
+      }, MAXIMIZE_ANIM_STEP)
+    }
+  }
+
+  // Compute slot widths for +2 All view based on maximize animation
+  const slot0Width = createMemo(() => {
+    const total = dimensions().width
+    const half = Math.floor(total / 2)
+    const progress = maximizeProgress()
+    const maxSlot = maximizedSlot()
+    if (maxSlot === null || progress === 0) return half
+    if (maxSlot === 0) return Math.floor(half + (total - half) * progress)
+    return Math.floor(half * (1 - progress))
+  })
+  const slot1Width = createMemo(() => {
+    return dimensions().width - slot0Width()
+  })
+
   // All view prompt: primary = first selected slot, broadcast = rest
   const allViewPrimarySessionID = createMemo(() => {
     const sorted = [...selectedSlots()].sort()
-    if (sorted.length === 0) return undefined
+    if (sorted.length === 0) return allSessionIDs()[0]
     return allSessionIDs()[sorted[0]]
   })
   const allViewBroadcastSessionIDs = createMemo(() => {
@@ -379,7 +440,7 @@ export function Session() {
   // Wrapper border: top(1) + bottom(1) = 2
   const allViewPaneHeight = createMemo(() => {
     const voteBarHeight = showVoteControls() ? 5 : 0
-    const promptBarHeight = selectedSlots().size > 0 ? 4 : 0
+    const promptBarHeight = 4
     const wrapperBorder = 2
     const rows = allSessionIDs().length === 4 ? 2 : 1
     return Math.floor((dimensions().height - voteBarHeight - promptBarHeight) / rows) - wrapperBorder
@@ -534,8 +595,23 @@ export function Session() {
     const freshID = fork.data!.id
     duelLog.info("finalizeVote: forked winner to fresh session", { winningID, freshID })
 
+    // Pre-create N-1 opponent forks at vote time (so they're ready when user types next prompt)
+    const forkDuelCount = getDuelCount()
+    const opponentIDs: string[] = []
+    for (let i = 0; i < forkDuelCount - 1; i++) {
+      const opponentFork = await sdk.client.session.fork({ sessionID: freshID })
+      if (opponentFork.data) opponentIDs.push(opponentFork.data.id)
+    }
+    duelLog.info("finalizeVote: pre-created opponent forks", { freshID, opponentIDs, forkDuelCount })
+
     setLastChosenSessionID(freshID)
-    setViewingSlot(slot)
+    setPendingForkIDs({ primaryID: freshID, opponentIDs })
+    // Stay in All view but maximize the winner slot
+    if (isAllView() && allSessionIDs().length === 2) {
+      toggleMaximize(slot)
+    } else {
+      setViewingSlot(slot)
+    }
     setControlSlot(slot)
     // Store the winning slot so the fork-after-vote flow uses freshID on next prompt
     setPendingForkWinner(slot)
@@ -807,61 +883,91 @@ export function Session() {
             </box>
           }>
             <box flexDirection="column" flexGrow={1} height="100%" onMouseMove={(e: any) => setMousePos({ x: e.x, y: e.y })}>
-              <box flexDirection="row" flexGrow={1} height="50%">
-                <box width="50%" height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(0) ? theme.success : theme.border} overflow="hidden">
-                  <box position="absolute" top={0} right={0} zIndex={200}
-                    paddingLeft={1} paddingRight={1}
-                    backgroundColor={selectedSlots().has(0) ? theme.success : theme.backgroundElement}
-                    onMouseUp={() => {
-                      setSelectedSlots(prev => {
-                        const next = new Set(prev)
-                        if (next.has(0)) next.delete(0); else next.add(0)
-                        duelLog.info("slot selector clicked", { slot: 0, selected: [...next], selectedSessionIDs: [...next].map(s => allSessionIDs()[s]) })
-                        return next
-                      })
-                    }}
-                  >
-                    <text fg={selectedSlots().has(0) ? theme.background : theme.text}>{selectedSlots().has(0) ? "✓" : "○"}</text>
+              <box flexDirection="row" flexGrow={1} height={allSessionIDs().length === 4 ? "50%" : "100%"}>
+                <Show when={slot0Width() > 0}>
+                  <box width={slot0Width()} height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(0) ? theme.success : theme.border} overflow="hidden">
+                    <Show when={pendingForkWinner() === undefined}>
+                      <box position="absolute" top={0} right={0} zIndex={200} flexDirection="row">
+                        <Show when={allSessionIDs().length === 2}>
+                          <box
+                            paddingLeft={1} paddingRight={1}
+                            backgroundColor={theme.backgroundElement}
+                            onMouseUp={() => toggleMaximize(0)}
+                          >
+                            <text fg={theme.text}>{maximizedSlot() === 0 ? "▾" : "▸"}</text>
+                          </box>
+                        </Show>
+                        <box
+                          paddingLeft={1} paddingRight={1}
+                          backgroundColor={selectedSlots().has(0) ? theme.success : theme.backgroundElement}
+                          onMouseUp={() => {
+                            setSelectedSlots(prev => {
+                              const next = new Set(prev)
+                              if (next.has(0)) next.delete(0); else next.add(0)
+                              duelLog.info("slot selector clicked", { slot: 0, selected: [...next], selectedSessionIDs: [...next].map(s => allSessionIDs()[s]) })
+                              return next
+                            })
+                          }}
+                        >
+                          <text fg={selectedSlots().has(0) ? theme.background : theme.text}>{selectedSlots().has(0) ? "✓" : "○"}</text>
+                        </box>
+                      </box>
+                    </Show>
+                    <SessionPane
+                      sessionID={allSessionIDs()[0]}
+                      width={slot0Width() - 2}
+                      height={allViewPaneHeight()}
+                      isSplit={isSplit()}
+                      slot={0}
+                      controlSlot={controlSlot()}
+                      opponentSessionIDs={route.opponentSessionIDs}
+                      onScrollRef={(r) => { allViewScrollRefs[0] = r }}
+                      onScrollIntercept={routeScrollToCorrectSlot}
+                    />
                   </box>
-                  <SessionPane
-                    sessionID={allSessionIDs()[0]}
-                    width={Math.floor(dimensions().width / 2) - 2}
-                    height={allViewPaneHeight()}
-                    isSplit={isSplit()}
-                    slot={0}
-                    controlSlot={controlSlot()}
-                    opponentSessionIDs={route.opponentSessionIDs}
-                    onScrollRef={(r) => { allViewScrollRefs[0] = r }}
-                    onScrollIntercept={routeScrollToCorrectSlot}
-                  />
-                </box>
-                <box width="50%" height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(1) ? theme.success : theme.border} overflow="hidden">
-                  <box position="absolute" top={0} right={0} zIndex={200}
-                    paddingLeft={1} paddingRight={1}
-                    backgroundColor={selectedSlots().has(1) ? theme.success : theme.backgroundElement}
-                    onMouseUp={() => {
-                      setSelectedSlots(prev => {
-                        const next = new Set(prev)
-                        if (next.has(1)) next.delete(1); else next.add(1)
-                        duelLog.info("slot selector clicked", { slot: 1, selected: [...next], selectedSessionIDs: [...next].map(s => allSessionIDs()[s]) })
-                        return next
-                      })
-                    }}
-                  >
-                    <text fg={selectedSlots().has(1) ? theme.background : theme.text}>{selectedSlots().has(1) ? "✓" : "○"}</text>
+                </Show>
+                <Show when={slot1Width() > 0}>
+                  <box width={slot1Width()} height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(1) ? theme.success : theme.border} overflow="hidden">
+                    <Show when={pendingForkWinner() === undefined}>
+                      <box position="absolute" top={0} right={0} zIndex={200} flexDirection="row">
+                        <Show when={allSessionIDs().length === 2}>
+                          <box
+                            paddingLeft={1} paddingRight={1}
+                            backgroundColor={theme.backgroundElement}
+                            onMouseUp={() => toggleMaximize(1)}
+                          >
+                            <text fg={theme.text}>{maximizedSlot() === 1 ? "▾" : "▸"}</text>
+                          </box>
+                        </Show>
+                        <box
+                          paddingLeft={1} paddingRight={1}
+                          backgroundColor={selectedSlots().has(1) ? theme.success : theme.backgroundElement}
+                          onMouseUp={() => {
+                            setSelectedSlots(prev => {
+                              const next = new Set(prev)
+                              if (next.has(1)) next.delete(1); else next.add(1)
+                              duelLog.info("slot selector clicked", { slot: 1, selected: [...next], selectedSessionIDs: [...next].map(s => allSessionIDs()[s]) })
+                              return next
+                            })
+                          }}
+                        >
+                          <text fg={selectedSlots().has(1) ? theme.background : theme.text}>{selectedSlots().has(1) ? "✓" : "○"}</text>
+                        </box>
+                      </box>
+                    </Show>
+                    <SessionPane
+                      sessionID={allSessionIDs()[1]}
+                      width={slot1Width() - 2}
+                      height={allViewPaneHeight()}
+                      isSplit={isSplit()}
+                      slot={1}
+                      controlSlot={controlSlot()}
+                      opponentSessionIDs={route.opponentSessionIDs}
+                      onScrollRef={(r) => { allViewScrollRefs[1] = r }}
+                      onScrollIntercept={routeScrollToCorrectSlot}
+                    />
                   </box>
-                  <SessionPane
-                    sessionID={allSessionIDs()[1]}
-                    width={Math.floor(dimensions().width / 2) - 2}
-                    height={allViewPaneHeight()}
-                    isSplit={isSplit()}
-                    slot={1}
-                    controlSlot={controlSlot()}
-                    opponentSessionIDs={route.opponentSessionIDs}
-                    onScrollRef={(r) => { allViewScrollRefs[1] = r }}
-                    onScrollIntercept={routeScrollToCorrectSlot}
-                  />
-                </box>
+                </Show>
               </box>
               <Show when={allSessionIDs().length === 4}>
                 <box flexDirection="row" flexGrow={1} height="50%">
@@ -927,19 +1033,112 @@ export function Session() {
                   <VoteHint />
                 </box>
               </Show>
-              <Show when={selectedSlots().size > 0}>
-                <box flexShrink={0} justifyContent="center" alignItems="center" paddingLeft={2} paddingRight={2} paddingBottom={1}>
-                  <box width="100%" maxWidth={promptMaxWidth()}>
-                    <Prompt
-                      visible={true}
-                      compareMode={false}
-                      awaitingVote={false}
-                      disabled={false}
-                      focused={isAllView()}
-                      sessionID={allViewPrimarySessionID()!}
-                      onSubmit={async (primarySessionID, promptInfo) => {
+              <Show when={modelReveal() && !awaitingVote()}>
+                <box flexDirection="row" justifyContent="center" gap={1} paddingBottom={0} paddingTop={1}>
+                  <For each={allSessionIDs()}>
+                    {(sessionID, index) => (
+                      <>
+                        <Show when={index() > 0}><text fg={theme.textMuted}> | </text></Show>
+                        <text fg={theme.textMuted}>Slot {index()}: </text>
+                        <text fg={theme.text}>{modelReveal()![sessionID] ?? "unknown"}</text>
+                      </>
+                    )}
+                  </For>
+                </box>
+              </Show>
+              <box flexShrink={0} justifyContent="center" alignItems="center" paddingLeft={2} paddingRight={2} paddingBottom={1}>
+                <box width="100%" maxWidth={promptMaxWidth()}>
+                  <Prompt
+                    visible={true}
+                    compareMode={pendingForkWinner() !== undefined ? local.model.current()?.modelID === "duel" : false}
+                    awaitingVote={false}
+                    skipAutoSend={pendingForkWinner() !== undefined}
+                    duelSessionId={pendingForkWinner() !== undefined ? currentDuelId() : undefined}
+                    disabled={false}
+                    focused={isAllView()}
+                    sessionID={allViewPrimarySessionID()!}
+                      onSubmit={async (_sessionID, promptInfo, duelSessionId) => {
+                        const winnerSlot = pendingForkWinner()
+
+                        // Fork-on-next-prompt: use pre-created forks from finalizeVote
+                        if (winnerSlot !== undefined && pendingForkIDs()) {
+                          const { primaryID, opponentIDs: newOpponentIDs } = pendingForkIDs()!
+                          duelLog.info("allView fork-on-next-prompt", { winnerSlot, primaryID, newOpponentIDs, duelSessionId })
+
+                          const nonTextParts = promptInfo.parts.filter((part) => part.type !== "text")
+                          const parts = [
+                            { id: Identifier.ascending("part"), type: "text" as const, text: promptInfo.input },
+                            ...nonTextParts.map((x) => ({ id: Identifier.ascending("part"), ...x })),
+                          ]
+                          const forkDuelCount = newOpponentIDs.length + 1
+                          const promptPayload = {
+                            agent: local.agent.current().name,
+                            model: local.model.current()!,
+                            variant: local.model.variant.current(),
+                            sessionTrackingNumber: getSessionTrackingNumber(),
+                            parts,
+                            duelSessionId,
+                          }
+
+                          duelLog.info("allView sending prompt to winner", { sessionID: primaryID, duelSessionId, duelSlot: 0, duelSlotCount: forkDuelCount })
+                          sdk.client.session.prompt({
+                            sessionID: primaryID,
+                            messageID: Identifier.ascending("message"),
+                            ...promptPayload,
+                            duelSlot: 0,
+                            duelSlotCount: forkDuelCount,
+                          })
+                          for (let i = 0; i < newOpponentIDs.length; i++) {
+                            duelLog.info("allView sending prompt to fork", { sessionID: newOpponentIDs[i], duelSessionId, duelSlot: i + 1, duelSlotCount: forkDuelCount })
+                            sdk.client.session.prompt({
+                              sessionID: newOpponentIDs[i],
+                              messageID: Identifier.ascending("message"),
+                              ...promptPayload,
+                              duelSlot: i + 1,
+                              duelSlotCount: forkDuelCount,
+                            })
+                          }
+
+                          logRoundStart({
+                            sessionTrackingNumber: getSessionTrackingNumber(),
+                            sessionId: duelSessionId!,
+                            slots: [primaryID, ...newOpponentIDs],
+                          })
+
+                          // Reset duel state for next round (component is reused, not re-created)
+                          setModelReveal(undefined)
+                          setSlotColors([])
+                          setPreviewedSlot(null)
+                          setCurrentDuelId(duelSessionId)
+                          setAwaitingVote(true)
+                          setPendingForkWinner(undefined)
+                          setPendingForkIDs(undefined)
+
+                          // Minimize animation, then navigate to new round
+                          if (maximizedSlot() !== null) {
+                            toggleMaximize(maximizedSlot()!)
+                            setTimeout(() => {
+                              navigate({
+                                type: "session",
+                                sessionID: primaryID,
+                                opponentSessionIDs: newOpponentIDs,
+                                duelSessionId: duelSessionId,
+                              })
+                            }, MAXIMIZE_ANIM_DURATION + 50)
+                          } else {
+                            navigate({
+                              type: "session",
+                              sessionID: primaryID,
+                              opponentSessionIDs: newOpponentIDs,
+                              duelSessionId: duelSessionId,
+                            })
+                          }
+                          return
+                        }
+
+                        // Normal follow-up: send to selected (or all) sessions
                         const broadcast = allViewBroadcastSessionIDs()
-                        duelLog.info("allView prompt submitted", { primarySessionID, selectedSlots: [...selectedSlots()], broadcastSessionIDs: broadcast })
+                        duelLog.info("allView prompt submitted", { primarySessionID: _sessionID, selectedSlots: [...selectedSlots()], broadcastSessionIDs: broadcast })
                         if (broadcast) {
                           for (const targetID of broadcast) {
                             sdk.client.session.prompt({
@@ -967,7 +1166,6 @@ export function Session() {
                     />
                   </box>
                 </box>
-              </Show>
             </box>
           </Show>
           <Show when={showPrompt() && !isAllView()}>
@@ -1021,20 +1219,17 @@ export function Session() {
                       sessionIDs: allSessionIDs(),
                     })
 
-                    // When skipAutoSend is true (pending fork), we handle everything:
-                    // 1. Fork the winner N-1 times
-                    // 2. Send prompt to winner (slot 0) and each fork (slots 1..N-1)
-                    // 3. Navigate with new opponent IDs
-                    if (winnerSlot !== undefined && route.opponentSessionIDs?.length) {
-                      // Use the freshly forked session from finalizeVote (stored in lastChosenSessionID)
-                      const winningID = lastChosenSessionID() ?? allSessionIDs()[winnerSlot]
-                      duelLog.info("forking winner on next message", { winnerSlot, winningSessionID: winningID })
+                    // When skipAutoSend is true (pending fork), use pre-created forks from finalizeVote
+                    if (winnerSlot !== undefined && pendingForkIDs()) {
+                      const { primaryID, opponentIDs: newOpponentIDs } = pendingForkIDs()!
+                      duelLog.info("forking winner on next message", { winnerSlot, primaryID, newOpponentIDs })
 
                       const nonTextParts = _promptInfo.parts.filter((part) => part.type !== "text")
                       const parts = [
                         { id: Identifier.ascending("part"), type: "text" as const, text: _promptInfo.input },
                         ...nonTextParts.map((x) => ({ id: Identifier.ascending("part"), ...x })),
                       ]
+                      const forkDuelCount = newOpponentIDs.length + 1
                       const promptPayload = {
                         agent: local.agent.current().name,
                         model: local.model.current()!,
@@ -1044,31 +1239,18 @@ export function Session() {
                         duelSessionId,
                       }
 
-                      // Fork winner N-1 times BEFORE sending any prompts
-                      // (so forks copy pre-prompt history, avoiding duplicate user messages)
-                      const forkDuelCount = getDuelCount()
-                      const newOpponentIDs: string[] = []
-                      for (let i = 0; i < forkDuelCount - 1; i++) {
-                        const fork = await sdk.client.session.fork({ sessionID: winningID })
-                        if (fork.data) {
-                          newOpponentIDs.push(fork.data.id)
-                        }
-                      }
-
-                      // Now send prompts to winner (slot 0) and all forks (slots 1..N-1)
-                      duelLog.info("sending prompt to winner", { sessionID: winningID, duelSessionId, duelSlot: 0, duelSlotCount: forkDuelCount })
+                      duelLog.info("sending prompt to winner", { sessionID: primaryID, duelSessionId, duelSlot: 0, duelSlotCount: forkDuelCount })
                       sdk.client.session.prompt({
-                        sessionID: winningID,
+                        sessionID: primaryID,
                         messageID: Identifier.ascending("message"),
                         ...promptPayload,
                         duelSlot: 0,
                         duelSlotCount: forkDuelCount,
                       })
                       for (let i = 0; i < newOpponentIDs.length; i++) {
-                        const forkedID = newOpponentIDs[i]
-                        duelLog.info("sending prompt to fork", { sessionID: forkedID, duelSessionId, duelSlot: i + 1, duelSlotCount: forkDuelCount })
+                        duelLog.info("sending prompt to fork", { sessionID: newOpponentIDs[i], duelSessionId, duelSlot: i + 1, duelSlotCount: forkDuelCount })
                         sdk.client.session.prompt({
-                          sessionID: forkedID,
+                          sessionID: newOpponentIDs[i],
                           messageID: Identifier.ascending("message"),
                           ...promptPayload,
                           duelSlot: i + 1,
@@ -1079,15 +1261,27 @@ export function Session() {
                       logRoundStart({
                         sessionTrackingNumber: getSessionTrackingNumber(),
                         sessionId: duelSessionId!,
-                        slots: [winningID, ...newOpponentIDs],
+                        slots: [primaryID, ...newOpponentIDs],
                       })
+
+                      // Reset duel state for next round (component is reused, not re-created)
+                      setModelReveal(undefined)
+                      setSlotColors([])
+                      setPreviewedSlot(null)
+                      setCurrentDuelId(duelSessionId)
+                      setAwaitingVote(true)
+                      setViewingSlot(-1)
+                      setMaximizedSlot(null)
+                      setMaximizeProgress(0)
+                      setPendingForkWinner(undefined)
+                      setPendingForkIDs(undefined)
 
                       navigate({
                         type: "session",
-                        sessionID: winningID,
+                        sessionID: primaryID,
                         opponentSessionIDs: newOpponentIDs,
+                        duelSessionId: duelSessionId,
                       })
-                      setPendingForkWinner(undefined)
                     }
 
                     const scrollFn = scrollToBottomFns()[viewingSlot()]
@@ -1101,6 +1295,8 @@ export function Session() {
                         setSlotColors([])
                         setPreviewedSlot(null)
                         setViewingSlot(-1)
+                        setMaximizedSlot(null)
+                        setMaximizeProgress(0)
                         setAwaitingVote(true)
                       } else {
                         // Follow-up message to one slot — keep vote state intact
