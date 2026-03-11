@@ -210,15 +210,43 @@ export function Session() {
   // Which slot the user is currently viewing in duel mode (-1 = "All" split view)
   const [viewingSlot, setViewingSlot] = createSignal(0)
   const isAllView = createMemo(() => viewingSlot() === -1)
-  const showAllTab = createMemo(() => isSplit() && allSessionIDs().length === 2)
+  const showAllTab = createMemo(() => isSplit() && (allSessionIDs().length === 2 || allSessionIDs().length === 4))
   // Tab bar height: paddingTop(1) + borderTop(1) + 2 text lines + borderBottom(1) + paddingBottom(1) = 6
   // Wrapper border: top(1) + bottom(1) = 2
-  // SessionPane padding: top(1) + bottom(1) = 2
   const allViewPaneHeight = createMemo(() => {
     const tabBarHeight = 6
     const wrapperBorder = 2
-    return dimensions().height - tabBarHeight - wrapperBorder
+    const rows = allSessionIDs().length === 4 ? 2 : 1
+    return Math.floor((dimensions().height - tabBarHeight) / rows) - wrapperBorder
   })
+
+  // Mouse hover tracking for All view debug logging
+  const [mousePos, setMousePos] = createSignal<{ x: number; y: number }>({ x: -1, y: -1 })
+  const hoverPollTimer = setInterval(() => {
+    if (!isAllView()) {
+      duelLog.info("hover poll", { result: "not in all view" })
+      return
+    }
+    const { x, y } = mousePos()
+    if (x < 0 || y < 0) {
+      duelLog.info("hover poll", { result: "no mouse position", x, y })
+      return
+    }
+    const tabBarHeight = 6
+    const halfW = Math.floor(dimensions().width / 2)
+    const halfH = Math.floor((dimensions().height - tabBarHeight) / 2)
+    const col = x < halfW ? 0 : 1
+    const row = y < tabBarHeight + halfH ? 0 : 1
+    const slotCount = allSessionIDs().length
+    let slot: number
+    if (slotCount === 2) {
+      slot = col
+    } else {
+      slot = row * 2 + col
+    }
+    duelLog.info("hover poll", { slot, x, y, col, row, halfW, halfH, tabBarHeight, slotCount })
+  }, 1000)
+  onCleanup(() => clearInterval(hoverPollTimer))
 
   // Animated ellipsis for "Running" status
   const [dotCount, setDotCount] = createSignal(1)
@@ -228,6 +256,32 @@ export function Session() {
 
   const [controlSlot, setControlSlot] = createSignal(1)
   const [scrollToBottomFns, setScrollToBottomFns] = createSignal<((() => void) | undefined)[]>([])
+
+  // Shared scrollbox refs for All view scroll routing
+  const allViewScrollRefs: (ScrollBoxRenderable | undefined)[] = []
+
+  function getSlotAtMouse(x: number, y: number): number | null {
+    const tabBarH = 6
+    const halfW = Math.floor(dimensions().width / 2)
+    const slotCount = allSessionIDs().length
+    const col = x < halfW ? 0 : 1
+    if (slotCount === 2) return col
+    const halfH = Math.floor((dimensions().height - tabBarH) / 2)
+    const row = y < tabBarH + halfH ? 0 : 1
+    return row * 2 + col
+  }
+
+  function routeScrollToCorrectSlot(sourceSlot: number, event: any) {
+    const targetSlot = getSlotAtMouse(event.x, event.y)
+    if (targetSlot === null || targetSlot === sourceSlot) return false
+    const targetScroll = allViewScrollRefs[targetSlot]
+    if (!targetScroll) return false
+    const dir = event.scroll?.direction
+    const delta = event.scroll?.delta ?? 0
+    if (dir === "up") targetScroll.scrollBy(-delta)
+    else if (dir === "down") targetScroll.scrollBy(delta)
+    return true
+  }
 
   const promptSessionID = createMemo(() => route.sessionID)
   // In follow-up mode, route prompt to the viewed slot's session
@@ -680,29 +734,65 @@ export function Session() {
               />
             </box>
           }>
-            <box flexDirection="row" flexGrow={1} height="100%">
-              <box width="50%" height="100%" border={["left", "right", "top", "bottom"]} borderColor={theme.border} overflow="hidden">
-                <SessionPane
-                  sessionID={allSessionIDs()[0]}
-                  width={Math.floor(dimensions().width / 2) - 2}
-                  height={allViewPaneHeight()}
-                  isSplit={isSplit()}
-                  slot={0}
-                  controlSlot={controlSlot()}
-                  opponentSessionIDs={route.opponentSessionIDs}
-                />
+            <box flexDirection="column" flexGrow={1} height="100%" onMouseMove={(e: any) => setMousePos({ x: e.x, y: e.y })}>
+              <box flexDirection="row" flexGrow={1} height="50%">
+                <box width="50%" height="100%" border={["left", "right", "top", "bottom"]} borderColor={theme.border} overflow="hidden">
+                  <SessionPane
+                    sessionID={allSessionIDs()[0]}
+                    width={Math.floor(dimensions().width / 2) - 2}
+                    height={allViewPaneHeight()}
+                    isSplit={isSplit()}
+                    slot={0}
+                    controlSlot={controlSlot()}
+                    opponentSessionIDs={route.opponentSessionIDs}
+                    onScrollRef={(r) => { allViewScrollRefs[0] = r }}
+                    onScrollIntercept={routeScrollToCorrectSlot}
+                  />
+                </box>
+                <box width="50%" height="100%" border={["left", "right", "top", "bottom"]} borderColor={theme.border} overflow="hidden">
+                  <SessionPane
+                    sessionID={allSessionIDs()[1]}
+                    width={Math.floor(dimensions().width / 2) - 2}
+                    height={allViewPaneHeight()}
+                    isSplit={isSplit()}
+                    slot={1}
+                    controlSlot={controlSlot()}
+                    opponentSessionIDs={route.opponentSessionIDs}
+                    onScrollRef={(r) => { allViewScrollRefs[1] = r }}
+                    onScrollIntercept={routeScrollToCorrectSlot}
+                  />
+                </box>
               </box>
-              <box width="50%" height="100%" border={["left", "right", "top", "bottom"]} borderColor={theme.border} overflow="hidden">
-                <SessionPane
-                  sessionID={allSessionIDs()[1]}
-                  width={Math.floor(dimensions().width / 2) - 2}
-                  height={allViewPaneHeight()}
-                  isSplit={isSplit()}
-                  slot={1}
-                  controlSlot={controlSlot()}
-                  opponentSessionIDs={route.opponentSessionIDs}
-                />
-              </box>
+              <Show when={allSessionIDs().length === 4}>
+                <box flexDirection="row" flexGrow={1} height="50%">
+                  <box width="50%" height="100%" border={["left", "right", "top", "bottom"]} borderColor={theme.border} overflow="hidden">
+                    <SessionPane
+                      sessionID={allSessionIDs()[2]}
+                      width={Math.floor(dimensions().width / 2) - 2}
+                      height={allViewPaneHeight()}
+                      isSplit={isSplit()}
+                      slot={2}
+                      controlSlot={controlSlot()}
+                      opponentSessionIDs={route.opponentSessionIDs}
+                      onScrollRef={(r) => { allViewScrollRefs[2] = r }}
+                      onScrollIntercept={routeScrollToCorrectSlot}
+                    />
+                  </box>
+                  <box width="50%" height="100%" border={["left", "right", "top", "bottom"]} borderColor={theme.border} overflow="hidden">
+                    <SessionPane
+                      sessionID={allSessionIDs()[3]}
+                      width={Math.floor(dimensions().width / 2) - 2}
+                      height={allViewPaneHeight()}
+                      isSplit={isSplit()}
+                      slot={3}
+                      controlSlot={controlSlot()}
+                      opponentSessionIDs={route.opponentSessionIDs}
+                      onScrollRef={(r) => { allViewScrollRefs[3] = r }}
+                      onScrollIntercept={routeScrollToCorrectSlot}
+                    />
+                  </box>
+                </box>
+              </Show>
             </box>
           </Show>
           <Show when={showPrompt() && !isAllView()}>
@@ -909,6 +999,8 @@ function SessionPane(props: {
   controlSlot: number
   opponentSessionIDs?: string[]
   onScrollToBottom?: (fn: () => void) => void
+  onScrollRef?: (scroll: ScrollBoxRenderable) => void
+  onScrollIntercept?: (slot: number, event: any) => boolean
 }) {
   const sync = useSync()
   const kv = useKV()
@@ -918,6 +1010,10 @@ function SessionPane(props: {
   const { navigate } = useRoute()
 
   duelLog.info("SessionPane mount", { slot: props.slot, sessionID: props.sessionID })
+
+  createEffect(() => {
+    duelLog.info("SessionPane dimensions", { slot: props.slot, width: props.width, height: props.height })
+  })
 
   const session = createMemo(() => sync.session.get(props.sessionID))
   const parentCtx = use()
@@ -1775,12 +1871,21 @@ function SessionPane(props: {
 
   return (
     <context.Provider value={ctx}>
-      <box width={props.width} height={props.height} paddingBottom={1} paddingTop={1} paddingLeft={2} paddingRight={2} gap={1}>
+      <box width={props.width} height={props.height} overflow="hidden" paddingBottom={1} paddingTop={1} paddingLeft={2} paddingRight={2} gap={1}>
         <Show when={session()}>
           <scrollbox
             ref={(r) => {
               scroll = r
               props.onScrollToBottom?.(toBottom)
+              props.onScrollRef?.(r)
+            }}
+            onMouseScroll={function(this: any, e: any) {
+              if (props.onScrollIntercept?.(props.slot, e)) {
+                // The scrollbox's internal onMouseEvent fires after this listener,
+                // so we can't prevent it. Save position now, restore after it fires.
+                const saved = scroll.scrollTop
+                queueMicrotask(() => { scroll.scrollTop = saved })
+              }
             }}
             viewportOptions={{
               paddingRight: showScrollbar() ? 1 : 0,
