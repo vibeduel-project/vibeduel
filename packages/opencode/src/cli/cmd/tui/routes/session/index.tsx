@@ -167,6 +167,7 @@ export function Session() {
   const allSessionIDs = createMemo(() => {
     const ids = [route.sessionID]
     if (route.opponentSessionIDs) ids.push(...route.opponentSessionIDs)
+    duelLog.info("allSessionIDs recomputed", { ids, routeSessionID: route.sessionID, opponentSessionIDs: route.opponentSessionIDs })
     return ids
   })
 
@@ -204,13 +205,15 @@ export function Session() {
   const [modelReveal, setModelReveal] = createSignal<Record<string, string> | undefined>(undefined)
   const [lastToggleAt, setLastToggleAt] = createSignal(0)
   const [autoDuelDone, setAutoDuelDone] = createSignal(false)
+  // Pending duel entry: single→duel transition prepared, waiting for next prompt submit
+  const [pendingDuelEntry, setPendingDuelEntry] = createSignal<boolean>(false)
 
   // Preview state: tracks which slot is currently previewed in the user's repo
   const [previewedSlot, setPreviewedSlot] = createSignal<number | null>(null)
   const [previewInFlight, setPreviewInFlight] = createSignal(false)
 
   // Which slot the user is currently viewing in duel mode (-1 = "All" split view)
-  const [viewingSlot, setViewingSlot] = createSignal(isSplit() ? -1 : 0)
+  const [viewingSlot, setViewingSlot] = createSignal(-1)
   const isAllView = createMemo(() => viewingSlot() === -1)
   const showAllTab = createMemo(() => isSplit() && (allSessionIDs().length === 2 || allSessionIDs().length === 4))
   // Mouse hover tracking for All view debug logging
@@ -264,7 +267,13 @@ export function Session() {
   function toggleMaximize(slot: number) {
     if (maximizedSlot() === slot) {
       // Minimize: animate back
-      duelLog.info("maximize: minimizing", { slot })
+      duelLog.info("maximize: minimizing", {
+        slot,
+        fromProgress: maximizeProgress(),
+        allSessionIDs: allSessionIDs(),
+        isSplit: isSplit(),
+        pendingForkWinner: pendingForkWinner(),
+      })
       setMaximizeTarget(null)
       const startTime = Date.now()
       const startProgress = maximizeProgress()
@@ -277,11 +286,23 @@ export function Session() {
           clearInterval(timer)
           setMaximizedSlot(null)
           setMaximizeProgress(0)
+          duelLog.info("maximize: minimize complete", {
+            slot,
+            maximizedSlot: null,
+            slot0Width: slot0Width(),
+            slot1Width: slot1Width(),
+          })
         }
       }, MAXIMIZE_ANIM_STEP)
     } else {
       // Maximize: animate to full
-      duelLog.info("maximize: maximizing", { slot })
+      duelLog.info("maximize: maximizing", {
+        slot,
+        fromProgress: maximizeProgress(),
+        allSessionIDs: allSessionIDs(),
+        isSplit: isSplit(),
+        pendingForkWinner: pendingForkWinner(),
+      })
       setMaximizedSlot(slot)
       setMaximizeTarget(slot)
       const startTime = Date.now()
@@ -294,6 +315,12 @@ export function Session() {
         if (t >= 1) {
           clearInterval(timer)
           setMaximizeProgress(1)
+          duelLog.info("maximize: maximize complete", {
+            slot,
+            maximizedSlot: slot,
+            slot0Width: slot0Width(),
+            slot1Width: slot1Width(),
+          })
         }
       }, MAXIMIZE_ANIM_STEP)
     }
@@ -308,12 +335,28 @@ export function Session() {
     const progress = maximizeProgress()
     const maxSlot = maximizedSlot()
     if (maxSlot === null || progress === 0) return [half, total - half]
-    if (maxSlot === slotA) return [Math.floor(half + (total - half) * progress), Math.floor(half * (1 - progress))]
-    if (maxSlot === slotB) return [Math.floor(half * (1 - progress)), Math.floor(half + (total - half) * progress)]
-    // Maximized slot is in a different row — no width change
-    return [half, total - half]
+    let resultA: number, resultB: number
+    if (maxSlot === slotA) {
+      resultA = Math.floor(half + (total - half) * progress)
+      resultB = Math.floor(half * (1 - progress))
+    } else if (maxSlot === slotB) {
+      resultA = Math.floor(half * (1 - progress))
+      resultB = Math.floor(half + (total - half) * progress)
+    } else {
+      // Maximized slot is in a different row — no width change
+      return [half, total - half]
+    }
+    if (progress > 0 && progress < 1) {
+      duelLog.info("slotWidths animating", {
+        slotA, slotB, total, half, progress, maxSlot,
+        resultA, resultB,
+      })
+    }
+    return [resultA, resultB]
   }
-  const slot0Width = createMemo(() => computeRowSlotWidths(0, 1)[0])
+  const slot0Width = createMemo(() =>
+    allSessionIDs().length === 1 ? dimensions().width : computeRowSlotWidths(0, 1)[0]
+  )
   const slot1Width = createMemo(() => computeRowSlotWidths(0, 1)[1])
   const slot2Width = createMemo(() => computeRowSlotWidths(2, 3)[0])
   const slot3Width = createMemo(() => computeRowSlotWidths(2, 3)[1])
@@ -469,7 +512,7 @@ export function Session() {
   const allViewPaneHeight = createMemo(() => {
     const voteBarHeight = showVoteControls() ? 5 : 0
     const promptBarHeight = 4
-    const wrapperBorder = 2
+    const wrapperBorder = allSessionIDs().length > 1 ? 2 : 0
     if (allSessionIDs().length !== 4) {
       return dimensions().height - voteBarHeight - promptBarHeight - wrapperBorder
     }
@@ -515,6 +558,13 @@ export function Session() {
     on(
       () => route.sessionID,
       () => {
+        duelLog.info("autoDuelDone reset", {
+          routeSessionID: route.sessionID,
+          isSplit: isSplit(),
+          pendingDuelEntry: pendingDuelEntry(),
+          autoDuelDone: autoDuelDone(),
+          model: local.model.current()?.modelID,
+        })
         setAutoDuelDone(false)
       },
     ),
@@ -522,10 +572,16 @@ export function Session() {
 
   createEffect(() => {
     if (isSplit()) return
-    duelLog.info("not split, clearing vote state")
+    duelLog.info("not-split cleanup firing", {
+      isSplit: isSplit(),
+      viewingSlot: viewingSlot(),
+      awaitingVote: awaitingVote(),
+      pendingDuelEntry: pendingDuelEntry(),
+      model: local.model.current()?.modelID,
+    })
     setAwaitingVote(false)
     setPreviewedSlot(null)
-    setViewingSlot(0)
+    setViewingSlot(-1)
     setSlotColors([])
   })
 
@@ -651,6 +707,20 @@ export function Session() {
     setControlSlot(slot)
     // Store the winning slot so the fork-after-vote flow uses freshID on next prompt
     setPendingForkWinner(slot)
+
+    duelLog.info("finalizeVote: post-vote state", {
+      winnerSlot: slot,
+      winningSessionID: winningID,
+      freshID,
+      opponentIDs,
+      pendingForkWinner: slot,
+      isAllView: isAllView(),
+      maximizedSlot: maximizedSlot(),
+      willMaximize: isAllView(),
+      modelRevealKeys: Object.keys(modelReveal() ?? {}),
+      model: local.model.current()?.modelID,
+    })
+
     setPreviewedSlot(null)
     setAwaitingVote(false)
     setVoteInFlight(false)
@@ -666,24 +736,55 @@ export function Session() {
     }
   }
 
-  const enterDuel = async () => {
+  const prepareDuelEntry = async () => {
     if (isSplit()) {
-      duelLog.info("enterDuel skipped, already split")
+      duelLog.info("prepareDuelEntry skipped, already split")
       return
     }
-    duelLog.info("enterDuel starting", { sessionID: route.sessionID })
+    if (pendingDuelEntry()) {
+      duelLog.info("prepareDuelEntry skipped, already pending")
+      return
+    }
+    duelLog.info("prepareDuelEntry starting", {
+      sessionID: route.sessionID,
+      isSplit: isSplit(),
+      isAllView: isAllView(),
+      autoDuelDone: autoDuelDone(),
+      model: local.model.current()?.modelID,
+    })
     try {
-      const fork = await sdk.client.session.fork({ sessionID: route.sessionID })
-      if (!fork.data) throw new Error("No session id returned")
-      duelLog.info("enterDuel forked", { primarySessionID: route.sessionID, opponentSessionID: fork.data.id })
-      navigate({
-        type: "session",
-        sessionID: route.sessionID,
-        opponentSessionIDs: [fork.data.id],
+      // Pre-create opponent forks (same as finalizeVote does)
+      const forkDuelCount = getDuelCount()
+      const opponentIDs: string[] = []
+      for (let i = 0; i < forkDuelCount - 1; i++) {
+        const fork = await sdk.client.session.fork({ sessionID: route.sessionID })
+        if (fork.data) opponentIDs.push(fork.data.id)
+      }
+      duelLog.info("prepareDuelEntry: forks created", {
+        primaryID: route.sessionID,
+        opponentIDs,
+        forkDuelCount,
+      })
+
+      // Store pending state (consumed by AllView onSubmit on next prompt)
+      setPendingForkIDs({ primaryID: route.sessionID, opponentIDs })
+      setPendingDuelEntry(true)
+
+      // Pre-load maximize state so the transition animates on submit
+      // (has no visual effect while allSessionIDs.length === 1)
+      setMaximizedSlot(0)
+      setMaximizeProgress(1)
+
+      duelLog.info("prepareDuelEntry: ready", {
+        pendingDuelEntry: true,
+        pendingForkIDs: { primaryID: route.sessionID, opponentIDs },
+        maximizedSlot: 0,
+        maximizeProgress: 1,
       })
     } catch (e) {
+      duelLog.info("prepareDuelEntry: failed", { error: String(e) })
       toast.show({
-        message: "Failed to start duel mode",
+        message: "Failed to prepare duel mode",
         variant: "error",
       })
     }
@@ -698,11 +799,27 @@ export function Session() {
       return
     }
     setAutoDuelDone(true)
-    void enterDuel()
+    void prepareDuelEntry()
   })
 
   createEffect(() => {
     const model = local.model.current()
+    duelLog.info("exit-duel effect evaluated", {
+      modelID: model?.modelID ?? "none",
+      isSplit: isSplit(),
+      pendingDuelEntry: pendingDuelEntry(),
+      autoDuelDone: autoDuelDone(),
+      viewingSlot: viewingSlot(),
+    })
+    // If user switches away from duel model while duel entry is pending, clean up
+    if (pendingDuelEntry() && model?.modelID !== "duel") {
+      duelLog.info("exit-duel: clearing pendingDuelEntry (model changed)", { modelID: model?.modelID ?? "none" })
+      setPendingDuelEntry(false)
+      setPendingForkIDs(undefined)
+      setMaximizedSlot(null)
+      setMaximizeProgress(0)
+      return
+    }
     if (!isSplit()) return
     if (model?.modelID === "duel") return
     duelLog.info("model switched away from duel, exiting split", { modelID: model?.modelID ?? "none" })
@@ -921,8 +1038,8 @@ export function Session() {
             <box flexDirection="column" flexGrow={1} height="100%" onMouseMove={(e: any) => setMousePos({ x: e.x, y: e.y })}>
               <box flexDirection="row" flexGrow={allSessionIDs().length === 4 ? 0 : 1} height={allSessionIDs().length === 4 ? row0Height() : "100%"}>
                 <Show when={slot0Width() > 0}>
-                  <box width={slot0Width()} height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(0) ? theme.success : theme.border} overflow="hidden">
-                    <Show when={pendingForkWinner() === undefined}>
+                  <box width={slot0Width()} height="100%" border={allSessionIDs().length > 1 ? ["left", "right", "top", "bottom"] : undefined} borderColor={selectedSlots().has(0) ? theme.success : theme.border} overflow="hidden">
+                    <Show when={pendingForkWinner() === undefined && allSessionIDs().length > 1}>
                       <box position="absolute" top={0} right={0} zIndex={200} flexDirection="row">
                         <box
                           paddingLeft={1} paddingRight={1}
@@ -949,7 +1066,7 @@ export function Session() {
                     </Show>
                     <SessionPane
                       sessionID={allSessionIDs()[0]}
-                      width={slot0Width() - 2}
+                      width={allSessionIDs().length > 1 ? slot0Width() - 2 : slot0Width()}
                       height={allViewPaneHeight()}
                       isSplit={isSplit()}
                       slot={0}
@@ -960,7 +1077,7 @@ export function Session() {
                     />
                   </box>
                 </Show>
-                <Show when={slot1Width() > 0}>
+                <Show when={slot1Width() > 0 && allSessionIDs()[1]}>
                   <box width={slot1Width()} height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(1) ? theme.success : theme.border} overflow="hidden">
                     <Show when={pendingForkWinner() === undefined}>
                       <box position="absolute" top={0} right={0} zIndex={200} flexDirection="row">
@@ -1108,14 +1225,115 @@ export function Session() {
                 <box width="100%" maxWidth={promptMaxWidth()}>
                   <Prompt
                     visible={true}
-                    compareMode={pendingForkWinner() !== undefined ? local.model.current()?.modelID === "duel" : false}
+                    compareMode={
+                      (pendingForkWinner() !== undefined ? local.model.current()?.modelID === "duel" : false) ||
+                      pendingDuelEntry()
+                    }
                     awaitingVote={false}
-                    skipAutoSend={pendingForkWinner() !== undefined}
+                    skipAutoSend={pendingForkWinner() !== undefined || pendingDuelEntry()}
                     duelSessionId={pendingForkWinner() !== undefined ? currentDuelId() : undefined}
                     disabled={false}
                     focused={isAllView()}
                     sessionID={allViewPrimarySessionID()!}
                       onSubmit={async (_sessionID, promptInfo, duelSessionId) => {
+                        duelLog.info("allView onSubmit entry", {
+                          sessionID: _sessionID,
+                          pendingDuelEntry: pendingDuelEntry(),
+                          pendingForkWinner: pendingForkWinner(),
+                          pendingForkIDs: pendingForkIDs(),
+                          maximizedSlot: maximizedSlot(),
+                          maximizeProgress: maximizeProgress(),
+                          isAllView: isAllView(),
+                          isSplit: isSplit(),
+                          allSessionIDs: allSessionIDs(),
+                          selectedSlots: [...selectedSlots()],
+                          model: local.model.current()?.modelID,
+                        })
+
+                        // Single→duel entry: navigate to split, animate minimize, send prompts
+                        if (pendingDuelEntry() && pendingForkIDs()) {
+                          const { primaryID, opponentIDs: newOpponentIDs } = pendingForkIDs()!
+                          duelLog.info("allView duel-entry: starting", {
+                            primaryID, newOpponentIDs, duelSessionId,
+                            maximizedSlot: maximizedSlot(),
+                            maximizeProgress: maximizeProgress(),
+                          })
+
+                          const nonTextParts = promptInfo.parts.filter((part) => part.type !== "text")
+                          const parts = [
+                            { id: Identifier.ascending("part"), type: "text" as const, text: promptInfo.input },
+                            ...nonTextParts.map((x) => ({ id: Identifier.ascending("part"), ...x })),
+                          ]
+                          const forkDuelCount = newOpponentIDs.length + 1
+                          const promptPayload = {
+                            agent: local.agent.current().name,
+                            model: local.model.current()!,
+                            variant: local.model.variant.current(),
+                            sessionTrackingNumber: getSessionTrackingNumber(),
+                            parts,
+                            duelSessionId,
+                          }
+
+                          // Send prompts to primary + all opponents
+                          duelLog.info("allView duel-entry: sending prompt to primary", { sessionID: primaryID, duelSessionId, duelSlot: 0, duelSlotCount: forkDuelCount })
+                          sdk.client.session.prompt({
+                            sessionID: primaryID,
+                            messageID: Identifier.ascending("message"),
+                            ...promptPayload,
+                            duelSlot: 0,
+                            duelSlotCount: forkDuelCount,
+                          })
+                          for (let i = 0; i < newOpponentIDs.length; i++) {
+                            duelLog.info("allView duel-entry: sending prompt to opponent", { sessionID: newOpponentIDs[i], duelSessionId, duelSlot: i + 1, duelSlotCount: forkDuelCount })
+                            sdk.client.session.prompt({
+                              sessionID: newOpponentIDs[i],
+                              messageID: Identifier.ascending("message"),
+                              ...promptPayload,
+                              duelSlot: i + 1,
+                              duelSlotCount: forkDuelCount,
+                            })
+                          }
+
+                          logRoundStart({
+                            sessionTrackingNumber: getSessionTrackingNumber(),
+                            sessionId: duelSessionId!,
+                            slots: [primaryID, ...newOpponentIDs],
+                          })
+
+                          // Reset pending state
+                          setPendingDuelEntry(false)
+                          setPendingForkIDs(undefined)
+                          setCurrentDuelId(duelSessionId)
+
+                          // Navigate FIRST so isSplit() becomes true — then set awaitingVote.
+                          // If we set awaitingVote before navigate, the not-split cleanup effect
+                          // fires (isSplit still false) and resets awaitingVote back to false.
+                          duelLog.info("allView duel-entry: pre-navigate", {
+                            maximizedSlot: maximizedSlot(),
+                            maximizeProgress: maximizeProgress(),
+                            primaryID,
+                            newOpponentIDs,
+                            duelSessionId,
+                          })
+                          navigate({
+                            type: "session",
+                            sessionID: primaryID,
+                            opponentSessionIDs: newOpponentIDs,
+                            duelSessionId: duelSessionId,
+                          })
+                          setAwaitingVote(true)
+
+                          // Animate: minimize slot 0 to reveal opponents
+                          // (allSessionIDs now has 2+ items, computeRowSlotWidths kicks in)
+                          duelLog.info("allView duel-entry: starting minimize animation", {
+                            maximizedSlot: maximizedSlot(),
+                            allSessionIDs: allSessionIDs(),
+                            isSplit: isSplit(),
+                          })
+                          toggleMaximize(0)
+                          return
+                        }
+
                         const winnerSlot = pendingForkWinner()
 
                         // Fork-on-next-prompt: use pre-created forks from finalizeVote
@@ -1173,9 +1391,24 @@ export function Session() {
                           setPendingForkIDs(undefined)
 
                           // Minimize animation, then navigate to new round
+                          duelLog.info("allView fork-on-next: pre-navigate", {
+                            maximizedSlot: maximizedSlot(),
+                            willAnimate: maximizedSlot() !== null,
+                            primaryID,
+                            newOpponentIDs,
+                            awaitingVote: true,
+                            duelSessionId,
+                          })
                           if (maximizedSlot() !== null) {
                             toggleMaximize(maximizedSlot()!)
                             setTimeout(() => {
+                              duelLog.info("allView fork-on-next: delayed navigate firing", {
+                                primaryID,
+                                newOpponentIDs,
+                                maximizedSlot: maximizedSlot(),
+                                maximizeProgress: maximizeProgress(),
+                                isSplit: isSplit(),
+                              })
                               navigate({
                                 type: "session",
                                 sessionID: primaryID,
@@ -1196,7 +1429,16 @@ export function Session() {
 
                         // Normal follow-up: send to selected (or all) sessions
                         const broadcast = allViewBroadcastSessionIDs()
-                        duelLog.info("allView prompt submitted", { primarySessionID: _sessionID, selectedSlots: [...selectedSlots()], broadcastSessionIDs: broadcast })
+                        duelLog.info("allView normal submit", {
+                          sessionID: _sessionID,
+                          selectedSlots: [...selectedSlots()],
+                          broadcastSessionIDs: broadcast,
+                          hasBroadcast: !!broadcast,
+                          isSplit: isSplit(),
+                          allSessionIDs: allSessionIDs(),
+                          maximizedSlot: maximizedSlot(),
+                          model: local.model.current()?.modelID,
+                        })
                         if (broadcast) {
                           for (const targetID of broadcast) {
                             sdk.client.session.prompt({
@@ -1340,6 +1582,7 @@ export function Session() {
                         opponentSessionIDs: newOpponentIDs,
                         duelSessionId: duelSessionId,
                       })
+                      return
                     }
 
                     const scrollFn = scrollToBottomFns()[viewingSlot()]
@@ -1492,6 +1735,11 @@ function SessionPane(props: {
   })
 
   createEffect(async () => {
+    if (!props.sessionID) {
+      duelLog.warn("session sync skipped: no sessionID", { slot: props.slot })
+      return
+    }
+    duelLog.info("session sync starting", { sessionID: props.sessionID, slot: props.slot })
     await sync.session
       .sync(props.sessionID)
       .then(() => {
@@ -1499,6 +1747,7 @@ function SessionPane(props: {
       })
       .catch((e) => {
         console.error(e)
+        duelLog.warn("session sync failed", { sessionID: props.sessionID, slot: props.slot, error: e?.message ?? JSON.stringify(e) })
         // Only navigate home if the main session is missing, but for now just log error for pane
         toast.show({
           message: `Session not found: ${props.sessionID}`,

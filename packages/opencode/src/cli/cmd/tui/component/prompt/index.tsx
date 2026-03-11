@@ -283,6 +283,16 @@ export function Prompt(props: PromptProps) {
     const sessionID = props.sessionID
     const msg = lastUserMessage()
 
+    duelLog.info("prompt session-sync effect", {
+      sessionID,
+      prevSyncedSessionID: syncedSessionID,
+      willSync: sessionID !== syncedSessionID,
+      hasMsg: !!msg,
+      msgAgent: msg?.agent,
+      msgModel: msg?.model,
+      currentModel: local.model.current()?.modelID,
+    })
+
     if (sessionID !== syncedSessionID) {
       if (!sessionID || !msg) return
 
