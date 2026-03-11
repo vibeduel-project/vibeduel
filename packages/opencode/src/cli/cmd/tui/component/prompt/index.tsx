@@ -52,6 +52,7 @@ export type PromptProps = {
   // Existing duel session ID for follow-up messages (reuses the round's duel ID)
   duelSessionId?: string
   onSubmit?: (sessionID: string, prompt: PromptInfo, duelSessionId?: string) => void
+  onSwitchMode?: () => void
   ref?: (ref: PromptRef) => void
   hint?: JSX.Element
   showPlaceholder?: boolean
@@ -75,6 +76,7 @@ export function clearAutoDuelPreviousModel() { autoDuelPreviousModel = undefined
 // Duel count: how many models compete in a duel (2 or 4, no 3)
 const [duelCountSignal, setDuelCountSignal] = createSignal(2)
 export function getDuelCount() { return duelCountSignal() }
+export { setDuelCountSignal }
 
 const PLACEHOLDERS = ["Fix a TODO in the codebase", "What is the tech stack of this project?", "Fix broken tests"]
 
@@ -1097,45 +1099,59 @@ export function Prompt(props: PromptProps) {
                 // Shift+Tab: cycle single → duel(2) → duel(4) → single
                 if (e.shift && e.name === "tab") {
                   e.preventDefault()
+                  duelLog.info("shift+tab pressed", {
+                    statusType: status().type,
+                    awaitingVote: props.awaitingVote,
+                    hasOnSwitchMode: !!props.onSwitchMode,
+                    currentModel: local.model.current()?.modelID,
+                    duelCount: duelCountSignal(),
+                    sessionID: props.sessionID,
+                  })
                   if (status().type !== "idle") {
+                    duelLog.info("shift+tab: blocked, model not idle", { statusType: status().type })
                     toast.show({ message: "Toggle duel when model is done running.", variant: "warning", duration: 2000 })
                     return
                   }
                   if (props.awaitingVote) {
+                    duelLog.info("shift+tab: blocked, awaiting vote")
                     toast.show({ message: "Submit your vote before changing duel mode.", variant: "warning", duration: 2000 })
                     return
                   }
-                  const current = local.model.current()
-                  if (current?.modelID !== "duel") {
-                    // single → duel(2)
-                    if (current) lastSingleModel = { providerID: current.providerID, modelID: current.modelID }
-                    setDuelCountSignal(2)
-                    duelLog.info("shift+tab: switching to duel(2)", { from: current })
-                    local.model.set({ providerID: "vibeduel", modelID: "duel" })
-                  } else if (duelCountSignal() === 2) {
-                    // duel(2) → duel(4)
-                    setDuelCountSignal(4)
-                    duelLog.info("shift+tab: switching to duel(4)")
+                  if (props.onSwitchMode) {
+                    duelLog.info("shift+tab: delegating to onSwitchMode")
+                    props.onSwitchMode()
                   } else {
-                    // duel(4) → single
-                    setDuelCountSignal(2)
-                    const target =
-                      lastSingleModel ??
-                      (() => {
-                        const provider = sync.data.provider.find((p) =>
-                          Object.keys(p.models).some((id) => id !== "duel"),
-                        )
-                        if (!provider) return undefined
-                        const defaultModel = sync.data.provider_default[provider.id]
-                        const modelID =
-                          (defaultModel && defaultModel !== "duel" ? defaultModel : undefined) ??
-                          Object.keys(provider.models).find((id) => id !== "duel")
-                        if (!modelID) return undefined
-                        return { providerID: provider.id, modelID }
-                      })()
-                    if (target) {
-                      duelLog.info("shift+tab: switching to single mode", { model: target })
-                      local.model.set(target)
+                    // Fallback for home screen (no session context)
+                    duelLog.info("shift+tab: using fallback (home screen)")
+                    const current = local.model.current()
+                    if (current?.modelID !== "duel") {
+                      if (current) lastSingleModel = { providerID: current.providerID, modelID: current.modelID }
+                      setDuelCountSignal(2)
+                      duelLog.info("shift+tab fallback: single → duel(2)", { from: current, savedLastSingleModel: lastSingleModel })
+                      local.model.set({ providerID: "vibeduel", modelID: "duel" })
+                    } else if (duelCountSignal() === 2) {
+                      setDuelCountSignal(4)
+                      duelLog.info("shift+tab fallback: duel(2) → duel(4)")
+                    } else {
+                      setDuelCountSignal(2)
+                      const target =
+                        lastSingleModel ??
+                        (() => {
+                          const provider = sync.data.provider.find((p) =>
+                            Object.keys(p.models).some((id) => id !== "duel"),
+                          )
+                          if (!provider) return undefined
+                          const defaultModel = sync.data.provider_default[provider.id]
+                          const modelID =
+                            (defaultModel && defaultModel !== "duel" ? defaultModel : undefined) ??
+                            Object.keys(provider.models).find((id) => id !== "duel")
+                          if (!modelID) return undefined
+                          return { providerID: provider.id, modelID }
+                        })()
+                      duelLog.info("shift+tab fallback: duel(4) → single", { target, hadLastSingleModel: !!lastSingleModel })
+                      if (target) {
+                        local.model.set(target)
+                      }
                     }
                   }
                   return
