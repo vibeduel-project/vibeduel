@@ -211,15 +211,6 @@ export function Session() {
   const [viewingSlot, setViewingSlot] = createSignal(0)
   const isAllView = createMemo(() => viewingSlot() === -1)
   const showAllTab = createMemo(() => isSplit() && (allSessionIDs().length === 2 || allSessionIDs().length === 4))
-  // Tab bar height: paddingTop(1) + borderTop(1) + 2 text lines + borderBottom(1) + paddingBottom(1) = 6
-  // Wrapper border: top(1) + bottom(1) = 2
-  const allViewPaneHeight = createMemo(() => {
-    const tabBarHeight = 6
-    const wrapperBorder = 2
-    const rows = allSessionIDs().length === 4 ? 2 : 1
-    return Math.floor((dimensions().height - tabBarHeight) / rows) - wrapperBorder
-  })
-
   // Mouse hover tracking for All view debug logging
   const [mousePos, setMousePos] = createSignal<{ x: number; y: number }>({ x: -1, y: -1 })
   const hoverPollTimer = setInterval(() => {
@@ -369,6 +360,17 @@ export function Session() {
   const showVoteControls = createMemo(() => isSplit() && awaitingVote() && allDone())
   // Disable prompt only while models are actively generating in duel mode
   const promptDisabled = createMemo(() => isSplit() && awaitingVote() && !allDone())
+
+  // Tab bar height: paddingTop(1) + borderTop(1) + 2 text lines + borderBottom(1) + paddingBottom(1) = 6
+  // Vote bar height: paddingTop(1) + button row(3) + hint text(1) = 5
+  // Wrapper border: top(1) + bottom(1) = 2
+  const allViewPaneHeight = createMemo(() => {
+    const tabBarHeight = 6
+    const voteBarHeight = showVoteControls() ? 5 : 0
+    const wrapperBorder = 2
+    const rows = allSessionIDs().length === 4 ? 2 : 1
+    return Math.floor((dimensions().height - tabBarHeight - voteBarHeight) / rows) - wrapperBorder
+  })
 
   createEffect(() => {
     const split = isSplit()
@@ -618,6 +620,63 @@ export function Session() {
     })
   }
 
+  function VoteButtons() {
+    return (
+      <box flexDirection="row" justifyContent="center" gap={1}>
+        <For each={allSessionIDs()}>
+          {(_, index) => (
+            <box
+              border={["left", "right", "top", "bottom"]}
+              borderColor={(slotColors()[index()] as string | undefined) ?? theme.border}
+              paddingLeft={1}
+              paddingRight={1}
+              onMouseUp={() => {
+                duelLog.info("preview clicked", { slot: index(), timestamp: Date.now() })
+                handlePreview(index())
+              }}
+            >
+              <text fg={(slotColors()[index()] as string | undefined) ?? theme.text}>Slot {index()}</text>
+            </box>
+          )}
+        </For>
+        <box
+          border={["left", "right", "top", "bottom"]}
+          borderColor={previewedSlot() !== null ? theme.border : theme.textMuted}
+          paddingLeft={1}
+          paddingRight={1}
+          onMouseUp={() => {
+            duelLog.info("undo clicked", { timestamp: Date.now() })
+            handleUndo()
+          }}
+        >
+          <text fg={previewedSlot() !== null ? theme.text : theme.textMuted}>Undo</text>
+        </box>
+        <box
+          border={["left", "right", "top", "bottom"]}
+          borderColor={previewedSlot() !== null ? theme.success : theme.textMuted}
+          paddingLeft={1}
+          paddingRight={1}
+          onMouseUp={() => {
+            duelLog.info("submit clicked", { timestamp: Date.now(), previewedSlot: previewedSlot() })
+            finalizeVote()
+          }}
+        >
+          <text fg={previewedSlot() !== null ? theme.success : theme.textMuted}>Submit</text>
+        </box>
+      </box>
+    )
+  }
+
+  function VoteHint() {
+    return (
+      <text fg={theme.textMuted}>
+        {previewedSlot() !== null
+          ? `previewing slot ${previewedSlot()} — click submit to vote`
+          : "click a slot to preview, or type a follow-up"}
+      </text>
+    )
+  }
+
   return (
     <context.Provider
       value={{
@@ -793,6 +852,12 @@ export function Session() {
                   </box>
                 </box>
               </Show>
+              <Show when={showVoteControls()}>
+                <box flexShrink={0} flexDirection="column" alignItems="center" paddingTop={1} gap={0}>
+                  <VoteButtons />
+                  <VoteHint />
+                </box>
+              </Show>
             </box>
           </Show>
           <Show when={showPrompt() && !isAllView()}>
@@ -807,53 +872,8 @@ export function Session() {
               <box width="100%" maxWidth={promptMaxWidth()}>
                 <Show when={showVoteControls()}>
                   <box flexDirection="column" alignItems="center" paddingBottom={1} gap={0}>
-                    <box flexDirection="row" justifyContent="center" gap={1}>
-                      <For each={allSessionIDs()}>
-                        {(_, index) => (
-                          <box
-                            border={["left", "right", "top", "bottom"]}
-                            borderColor={(slotColors()[index()] as string | undefined) ?? theme.border}
-                            paddingLeft={1}
-                            paddingRight={1}
-                            onMouseUp={() => {
-                              duelLog.info("preview clicked", { slot: index(), timestamp: Date.now() })
-                              handlePreview(index())
-                            }}
-                          >
-                            <text fg={(slotColors()[index()] as string | undefined) ?? theme.text}>Slot {index()}</text>
-                          </box>
-                        )}
-                      </For>
-                      <box
-                        border={["left", "right", "top", "bottom"]}
-                        borderColor={previewedSlot() !== null ? theme.border : theme.textMuted}
-                        paddingLeft={1}
-                        paddingRight={1}
-                        onMouseUp={() => {
-                          duelLog.info("undo clicked", { timestamp: Date.now() })
-                          handleUndo()
-                        }}
-                      >
-                        <text fg={previewedSlot() !== null ? theme.text : theme.textMuted}>Undo</text>
-                      </box>
-                      <box
-                        border={["left", "right", "top", "bottom"]}
-                        borderColor={previewedSlot() !== null ? theme.success : theme.textMuted}
-                        paddingLeft={1}
-                        paddingRight={1}
-                        onMouseUp={() => {
-                          duelLog.info("submit clicked", { timestamp: Date.now(), previewedSlot: previewedSlot() })
-                          finalizeVote()
-                        }}
-                      >
-                        <text fg={previewedSlot() !== null ? theme.success : theme.textMuted}>Submit</text>
-                      </box>
-                    </box>
-                    <text fg={theme.textMuted}>
-                      {previewedSlot() !== null
-                        ? `previewing slot ${previewedSlot()} — click submit to vote`
-                        : "click a slot to preview, or type a follow-up"}
-                    </text>
+                    <VoteButtons />
+                    <VoteHint />
                   </box>
                 </Show>
                 <Show when={modelReveal() && !awaitingVote()}>
