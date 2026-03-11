@@ -746,36 +746,21 @@ export function Session() {
 
   function getCurrentMode(): DuelMode {
     const model = local.model.current()
-    const mode: DuelMode = (model?.modelID !== 'duel' && !pendingDuelEntry()) ? 'single'
-      : getDuelCount() === 4 ? 'plus_4' : 'plus_2'
-    duelLog.info("getCurrentMode", {
-      result: mode,
-      modelID: model?.modelID ?? "none",
-      pendingDuelEntry: pendingDuelEntry(),
-      duelCount: getDuelCount(),
-    })
-    return mode
+    if (model?.modelID !== 'duel' && !pendingDuelEntry()) return 'single'
+    return getDuelCount() === 4 ? 'plus_4' : 'plus_2'
   }
 
   function findFallbackModel(): { providerID: string; modelID: string } | undefined {
     const provider = sync.data.provider.find((p) =>
       Object.keys(p.models).some((id) => id !== "duel"),
     )
-    if (!provider) {
-      duelLog.info("findFallbackModel: no non-duel provider found")
-      return undefined
-    }
+    if (!provider) return undefined
     const defaultModel = sync.data.provider_default[provider.id]
     const modelID =
       (defaultModel && defaultModel !== "duel" ? defaultModel : undefined) ??
       Object.keys(provider.models).find((id) => id !== "duel")
-    if (!modelID) {
-      duelLog.info("findFallbackModel: no non-duel model found", { providerID: provider.id })
-      return undefined
-    }
-    const result = { providerID: provider.id, modelID }
-    duelLog.info("findFallbackModel", { result })
-    return result
+    if (!modelID) return undefined
+    return { providerID: provider.id, modelID }
   }
 
   async function switchMode(to?: DuelMode) {
@@ -785,196 +770,88 @@ export function Session() {
       to = from === 'single' ? 'plus_2'
          : from === 'plus_2' ? 'plus_4'
          : 'single'
-      duelLog.info("switchMode: cycling", { from, to })
     }
-    if (from === to) {
-      duelLog.info("switchMode: no-op, already in target mode", { from, to })
-      return
-    }
+    if (from === to) return
 
     switchModeInProgress = true
 
-    duelLog.info("switchMode: starting", {
+    duelLog.info("switchMode", {
       from, to,
       isSplit: isSplit(),
       pendingDuelEntry: pendingDuelEntry(),
       pendingForkIDs: pendingForkIDs(),
-      pendingForkWinner: pendingForkWinner(),
       duelCount: getDuelCount(),
-      currentDuelId: currentDuelId(),
-      lastChosenSessionID: lastChosenSessionID(),
-      routeSessionID: route.sessionID,
-      routeOpponentIDs: route.opponentSessionIDs,
-      allSessionIDs: allSessionIDs(),
-      previewedSlot: previewedSlot(),
-      awaitingVote: awaitingVote(),
-      model: local.model.current()?.modelID,
-      lastSingleModel,
     })
 
     // Phase 1: Cleanup (if leaving a duel state)
     if (from !== 'single') {
       const duelId = currentDuelId()
-      duelLog.info("switchMode phase 1: cleanup", {
-        from,
-        duelId,
-        previewedSlot: previewedSlot(),
-        hasPreview: previewedSlot() !== null,
-        willRevert: previewedSlot() !== null && !!duelId,
-        willClearSnapshot: !!duelId,
-      })
       if (previewedSlot() !== null && duelId) {
-        duelLog.info("switchMode phase 1: reverting preview", { duelId, slot: previewedSlot() })
         await revertToOriginal(duelId, process.cwd())
-        duelLog.info("switchMode phase 1: preview reverted", { duelId })
       }
-      if (duelId) {
-        duelLog.info("switchMode phase 1: clearing snapshot", { duelId })
-        clearSnapshot(duelId)
-      }
+      if (duelId) clearSnapshot(duelId)
       setModelReveal(undefined)
       setSlotColors([])
       setPreviewedSlot(null)
-      duelLog.info("switchMode phase 1: cleanup done")
-    } else {
-      duelLog.info("switchMode phase 1: skipped (from=single)")
     }
 
     // Phase 2: Determine continuation session ID
-    const pendingPrimaryID = pendingForkIDs()?.primaryID
-    const lastChosen = lastChosenSessionID()
-    const continuationID = pendingPrimaryID ?? lastChosen ?? route.sessionID
-    duelLog.info("switchMode phase 2: continuation ID", {
-      continuationID,
-      source: pendingPrimaryID ? "pendingForkIDs.primaryID"
-            : lastChosen ? "lastChosenSessionID"
-            : "route.sessionID",
-      pendingPrimaryID,
-      lastChosen,
-      routeSessionID: route.sessionID,
-    })
+    const continuationID = pendingForkIDs()?.primaryID
+      ?? lastChosenSessionID()
+      ?? route.sessionID
 
     // Phase 3: Adjust forks to match desired slot count
     const desiredOpponentCount = to === 'single' ? 0 : to === 'plus_2' ? 1 : 3
     const existingOpponents = pendingForkIDs()?.opponentIDs ?? []
-    duelLog.info("switchMode phase 3: fork adjustment", {
-      desiredOpponentCount,
-      existingOpponentCount: existingOpponents.length,
-      existingOpponents,
-      action: desiredOpponentCount === 0 ? "discard-all"
-            : existingOpponents.length < desiredOpponentCount ? "create-more"
-            : existingOpponents.length > desiredOpponentCount ? "trim"
-            : "no-change",
-    })
 
     if (desiredOpponentCount === 0) {
       // Going to single — discard all forks
-      duelLog.info("switchMode phase 3: discarding all forks")
       setPendingForkIDs(undefined)
       setPendingForkWinner(undefined)
       setPendingDuelEntry(false)
     } else if (existingOpponents.length < desiredOpponentCount) {
       // Need MORE forks — create additional from continuation session
       const newOpponents = [...existingOpponents]
-      const forksNeeded = desiredOpponentCount - existingOpponents.length
-      duelLog.info("switchMode phase 3: creating forks", {
-        forksNeeded,
-        fromSession: continuationID,
-        existingCount: existingOpponents.length,
-        targetCount: desiredOpponentCount,
-      })
       for (let i = existingOpponents.length; i < desiredOpponentCount; i++) {
-        duelLog.info("switchMode phase 3: forking", { index: i, fromSession: continuationID })
         const fork = await sdk.client.session.fork({ sessionID: continuationID })
-        if (fork.data) {
-          newOpponents.push(fork.data.id)
-          duelLog.info("switchMode phase 3: fork created", { index: i, newForkID: fork.data.id })
-        } else {
-          duelLog.info("switchMode phase 3: fork returned no data", { index: i })
-        }
+        if (fork.data) newOpponents.push(fork.data.id)
       }
-      duelLog.info("switchMode phase 3: forks adjusted", {
+      duelLog.info("switchMode: forks adjusted", {
         continuationID, newOpponents, desiredOpponentCount,
         previousCount: existingOpponents.length,
       })
       setPendingForkIDs({ primaryID: continuationID, opponentIDs: newOpponents })
     } else if (existingOpponents.length > desiredOpponentCount) {
       // Need FEWER forks — trim
-      const trimmed = existingOpponents.slice(0, desiredOpponentCount)
-      const discarded = existingOpponents.slice(desiredOpponentCount)
-      duelLog.info("switchMode phase 3: trimming forks", {
-        kept: trimmed,
-        discarded,
-        previousCount: existingOpponents.length,
-        newCount: desiredOpponentCount,
-      })
       setPendingForkIDs({
         primaryID: continuationID,
-        opponentIDs: trimmed,
-      })
-    } else {
-      duelLog.info("switchMode phase 3: fork count already matches", {
-        count: existingOpponents.length,
+        opponentIDs: existingOpponents.slice(0, desiredOpponentCount),
       })
     }
+    // else: exact match, pendingForkIDs stays as-is
 
     // Phase 4: Set model & duel count
     if (to === 'single') {
       setDuelCountSignal(2) // reset default
       const target = lastSingleModel ?? findFallbackModel()
-      duelLog.info("switchMode phase 4: restoring single mode", {
-        target,
-        hadLastSingleModel: !!lastSingleModel,
-        lastSingleModel,
-        usedFallback: !lastSingleModel,
-      })
       if (target) {
+        duelLog.info("switchMode: restoring single model", { model: target })
         local.model.set(target)
-      } else {
-        duelLog.info("switchMode phase 4: no model to restore!")
       }
     } else {
-      const newDuelCount = to === 'plus_2' ? 2 : 4
-      duelLog.info("switchMode phase 4: entering/changing duel mode", {
-        to,
-        newDuelCount,
-        fromSingle: from === 'single',
-        currentModel: local.model.current()?.modelID,
-      })
-      setDuelCountSignal(newDuelCount)
+      setDuelCountSignal(to === 'plus_2' ? 2 : 4)
       if (from === 'single') {
         const current = local.model.current()
         if (current) lastSingleModel = { providerID: current.providerID, modelID: current.modelID }
-        duelLog.info("switchMode phase 4: saving single model, setting duel model", {
-          savedModel: lastSingleModel,
-          settingModel: { providerID: "vibeduel", modelID: "duel" },
-        })
         local.model.set({ providerID: "vibeduel", modelID: "duel" })
         setPendingDuelEntry(true)
         setMaximizedSlot(0)
         setMaximizeProgress(1)
-        duelLog.info("switchMode phase 4: pendingDuelEntry set, maximize preloaded")
-      } else {
-        duelLog.info("switchMode phase 4: duel-to-duel transition, model stays duel", {
-          from, to, duelCount: newDuelCount,
-        })
       }
     }
 
     // Phase 5: Navigate (if exiting duel to single)
-    const shouldNavigate = to === 'single' && isSplit()
-    duelLog.info("switchMode phase 5: navigate check", {
-      shouldNavigate,
-      to,
-      isSplit: isSplit(),
-      continuationID,
-    })
-    if (shouldNavigate) {
-      duelLog.info("switchMode phase 5: navigating to single session", {
-        continuationID,
-        clearingAwaitingVote: awaitingVote(),
-        clearingLastChosen: lastChosenSessionID(),
-      })
+    if (to === 'single' && isSplit()) {
       setAwaitingVote(false)
       setViewingSlot(0)
       setLastChosenSessionID(undefined)
@@ -989,79 +866,40 @@ export function Session() {
     switchModeInProgress = false
 
     duelLog.info("switchMode: done", {
-      from, to,
+      to,
       pendingDuelEntry: pendingDuelEntry(),
       pendingForkIDs: pendingForkIDs(),
-      pendingForkWinner: pendingForkWinner(),
       duelCount: getDuelCount(),
-      isSplit: isSplit(),
-      awaitingVote: awaitingVote(),
-      model: local.model.current()?.modelID,
-      lastSingleModel,
-      switchModeInProgress: false,
     })
   }
 
   // Auto-duel effect: when model is set to "duel" externally (e.g. auto-duel on low credits),
   // trigger switchMode to prepare forks
   createEffect(() => {
-    const model = local.model.current()
-    duelLog.info("auto-duel effect evaluated", {
-      switchModeInProgress,
-      autoDuelDone: autoDuelDone(),
-      isSplit: isSplit(),
-      modelID: model?.modelID ?? "none",
-      pendingDuelEntry: pendingDuelEntry(),
-      duelCount: getDuelCount(),
-    })
-    if (switchModeInProgress) {
-      duelLog.info("auto-duel: skipped (switchModeInProgress)")
-      return
-    }
+    if (switchModeInProgress) return
     if (autoDuelDone()) return
-    if (isSplit()) {
-      duelLog.info("auto-duel: skipped (already split)")
-      return
-    }
+    if (isSplit()) return
+    const model = local.model.current()
     if (!model || model.modelID !== "duel") {
-      duelLog.info("auto-duel: skipped (model not duel)", { modelID: model?.modelID ?? "none" })
+      duelLog.info("auto-duel skipped", { modelID: model?.modelID ?? "none" })
       return
     }
-    if (pendingDuelEntry()) {
-      duelLog.info("auto-duel: skipped (pendingDuelEntry already set)")
-      return
-    }
+    if (pendingDuelEntry()) return // switchMode already handled this
     setAutoDuelDone(true)
-    const targetMode = getDuelCount() === 4 ? 'plus_4' as const : 'plus_2' as const
-    duelLog.info("auto-duel: model set to duel externally, calling switchMode", { targetMode, duelCount: getDuelCount() })
-    void switchMode(targetMode)
+    duelLog.info("auto-duel: model set to duel externally, preparing entry")
+    // Use switchMode to prepare forks (getCurrentMode will see 'single' since pendingDuelEntry is false)
+    void switchMode(getDuelCount() === 4 ? 'plus_4' : 'plus_2')
   })
 
   // Exit-duel effect: when model is changed away from "duel" externally
   // (e.g. auto-duel previous model restore). Model is already changed,
   // so we only need cleanup + navigation, not model setting.
   createEffect(() => {
+    if (switchModeInProgress) return
     const model = local.model.current()
-    duelLog.info("exit-duel effect evaluated", {
-      switchModeInProgress,
-      modelID: model?.modelID ?? "none",
-      isSplit: isSplit(),
-      pendingDuelEntry: pendingDuelEntry(),
-      pendingForkIDs: pendingForkIDs(),
-      awaitingVote: awaitingVote(),
-      autoDuelDone: autoDuelDone(),
-      viewingSlot: viewingSlot(),
-    })
-    if (switchModeInProgress) {
-      duelLog.info("exit-duel: skipped (switchModeInProgress)")
-      return
-    }
     // If user switches away from duel model while duel entry is pending, clean up
     if (pendingDuelEntry() && model?.modelID !== "duel") {
-      duelLog.info("exit-duel: clearing pendingDuelEntry (model changed away from duel)", {
-        modelID: model?.modelID ?? "none",
-        pendingForkIDs: pendingForkIDs(),
-      })
+      duelLog.info("exit-duel: model changed away from duel, cleaning up", { modelID: model?.modelID ?? "none" })
       setPendingDuelEntry(false)
       setPendingForkIDs(undefined)
       setMaximizedSlot(null)
@@ -1070,36 +908,17 @@ export function Session() {
     }
     if (!isSplit()) return
     if (model?.modelID === "duel") return
-    duelLog.info("exit-duel: model switched away from duel while split, exiting", {
-      modelID: model?.modelID ?? "none",
-      currentDuelId: currentDuelId(),
-      previewedSlot: previewedSlot(),
-      pendingForkIDs: pendingForkIDs(),
-      lastChosenSessionID: lastChosenSessionID(),
-      routeSessionID: route.sessionID,
-    })
+    duelLog.info("exit-duel: model switched away from duel, exiting split", { modelID: model?.modelID ?? "none" })
     setAutoDuelDone(false)
 
     // Inline cleanup (model already changed externally, skip Phase 4 of switchMode)
     const duelId = currentDuelId()
     if (previewedSlot() !== null && duelId) {
-      duelLog.info("exit-duel: reverting preview", { duelId, slot: previewedSlot() })
       void revertToOriginal(duelId, process.cwd())
     }
-    if (duelId) {
-      duelLog.info("exit-duel: clearing snapshot", { duelId })
-      clearSnapshot(duelId)
-    }
+    if (duelId) clearSnapshot(duelId)
 
-    const pendingPrimary = pendingForkIDs()?.primaryID
-    const lastChosen = lastChosenSessionID()
-    const selectedID = pendingPrimary ?? lastChosen ?? route.sessionID
-    duelLog.info("exit-duel: navigating to single session", {
-      selectedID,
-      source: pendingPrimary ? "pendingForkIDs.primaryID"
-            : lastChosen ? "lastChosenSessionID"
-            : "route.sessionID",
-    })
+    const selectedID = pendingForkIDs()?.primaryID ?? lastChosenSessionID() ?? route.sessionID
     setDuelCountSignal(2)
     setPendingForkIDs(undefined)
     setPendingForkWinner(undefined)
@@ -1116,7 +935,6 @@ export function Session() {
       sessionID: selectedID,
       opponentSessionIDs: undefined,
     })
-    duelLog.info("exit-duel: cleanup and navigation complete", { selectedID })
   })
 
   function VoteButtons() {
