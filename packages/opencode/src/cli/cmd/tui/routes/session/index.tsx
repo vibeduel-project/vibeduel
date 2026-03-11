@@ -208,7 +208,7 @@ export function Session() {
   const [previewInFlight, setPreviewInFlight] = createSignal(false)
 
   // Which slot the user is currently viewing in duel mode (-1 = "All" split view)
-  const [viewingSlot, setViewingSlot] = createSignal(0)
+  const [viewingSlot, setViewingSlot] = createSignal(isSplit() ? -1 : 0)
   const isAllView = createMemo(() => viewingSlot() === -1)
   const showAllTab = createMemo(() => isSplit() && (allSessionIDs().length === 2 || allSessionIDs().length === 4))
   // Mouse hover tracking for All view debug logging
@@ -374,17 +374,15 @@ export function Session() {
   // Disable prompt only while models are actively generating in duel mode
   const promptDisabled = createMemo(() => isSplit() && awaitingVote() && !allDone())
 
-  // Tab bar height: paddingTop(1) + borderTop(1) + 2 text lines + borderBottom(1) + paddingBottom(1) = 6
   // Vote bar height: paddingTop(1) + button row(3) + hint text(1) = 5
   // Prompt bar height: paddingBottom(1) + border(2) + input(1) = 4
   // Wrapper border: top(1) + bottom(1) = 2
   const allViewPaneHeight = createMemo(() => {
-    const tabBarHeight = 6
     const voteBarHeight = showVoteControls() ? 5 : 0
     const promptBarHeight = selectedSlots().size > 0 ? 4 : 0
     const wrapperBorder = 2
     const rows = allSessionIDs().length === 4 ? 2 : 1
-    return Math.floor((dimensions().height - tabBarHeight - voteBarHeight - promptBarHeight) / rows) - wrapperBorder
+    return Math.floor((dimensions().height - voteBarHeight - promptBarHeight) / rows) - wrapperBorder
   })
 
   createEffect(() => {
@@ -727,7 +725,7 @@ export function Session() {
     >
       <box flexDirection="column">
         <box flexDirection="column" flexGrow={1}>
-          <Show when={isSplit()}>
+          <Show when={isSplit() && !isAllView()}>
             <box flexDirection="row" justifyContent="center" paddingTop={1} paddingBottom={1} flexShrink={0} zIndex={100}>
               <box width={Math.min(78, (allSessionIDs().length + (showAllTab() ? 1 : 0)) * 20)} flexDirection="row" gap={1}>
                 <Show when={pendingForkWinner() !== undefined && modelReveal()} fallback={
@@ -1102,7 +1100,7 @@ export function Session() {
                         setModelReveal(undefined)
                         setSlotColors([])
                         setPreviewedSlot(null)
-                        setViewingSlot(0)
+                        setViewingSlot(-1)
                         setAwaitingVote(true)
                       } else {
                         // Follow-up message to one slot — keep vote state intact
