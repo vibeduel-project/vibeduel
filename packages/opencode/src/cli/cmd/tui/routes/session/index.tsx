@@ -867,7 +867,21 @@ export function Session() {
               </box>
               <Show when={allSessionIDs().length === 4}>
                 <box flexDirection="row" flexGrow={1} height="50%">
-                  <box width="50%" height="100%" border={["left", "right", "top", "bottom"]} borderColor={theme.border} overflow="hidden">
+                  <box width="50%" height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(2) ? theme.success : theme.border} overflow="hidden">
+                    <box position="absolute" top={0} right={0} zIndex={200}
+                      paddingLeft={1} paddingRight={1}
+                      backgroundColor={selectedSlots().has(2) ? theme.success : theme.backgroundElement}
+                      onMouseUp={() => {
+                        setSelectedSlots(prev => {
+                          const next = new Set(prev)
+                          if (next.has(2)) next.delete(2); else next.add(2)
+                          duelLog.info("slot selector clicked", { slot: 2, selected: [...next], selectedSessionIDs: [...next].map(s => allSessionIDs()[s]) })
+                          return next
+                        })
+                      }}
+                    >
+                      <text fg={selectedSlots().has(2) ? theme.background : theme.text}>{selectedSlots().has(2) ? "✓" : "○"}</text>
+                    </box>
                     <SessionPane
                       sessionID={allSessionIDs()[2]}
                       width={Math.floor(dimensions().width / 2) - 2}
@@ -880,7 +894,21 @@ export function Session() {
                       onScrollIntercept={routeScrollToCorrectSlot}
                     />
                   </box>
-                  <box width="50%" height="100%" border={["left", "right", "top", "bottom"]} borderColor={theme.border} overflow="hidden">
+                  <box width="50%" height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(3) ? theme.success : theme.border} overflow="hidden">
+                    <box position="absolute" top={0} right={0} zIndex={200}
+                      paddingLeft={1} paddingRight={1}
+                      backgroundColor={selectedSlots().has(3) ? theme.success : theme.backgroundElement}
+                      onMouseUp={() => {
+                        setSelectedSlots(prev => {
+                          const next = new Set(prev)
+                          if (next.has(3)) next.delete(3); else next.add(3)
+                          duelLog.info("slot selector clicked", { slot: 3, selected: [...next], selectedSessionIDs: [...next].map(s => allSessionIDs()[s]) })
+                          return next
+                        })
+                      }}
+                    >
+                      <text fg={selectedSlots().has(3) ? theme.background : theme.text}>{selectedSlots().has(3) ? "✓" : "○"}</text>
+                    </box>
                     <SessionPane
                       sessionID={allSessionIDs()[3]}
                       width={Math.floor(dimensions().width / 2) - 2}
@@ -910,10 +938,33 @@ export function Session() {
                       awaitingVote={false}
                       disabled={false}
                       focused={isAllView()}
-                      broadcastSessionIDs={allViewBroadcastSessionIDs()}
                       sessionID={allViewPrimarySessionID()!}
-                      onSubmit={async () => {
-                        duelLog.info("allView prompt submitted", { selectedSlots: [...selectedSlots()], primarySessionID: allViewPrimarySessionID(), broadcastSessionIDs: allViewBroadcastSessionIDs() })
+                      onSubmit={async (primarySessionID, promptInfo) => {
+                        const broadcast = allViewBroadcastSessionIDs()
+                        duelLog.info("allView prompt submitted", { primarySessionID, selectedSlots: [...selectedSlots()], broadcastSessionIDs: broadcast })
+                        if (broadcast) {
+                          for (const targetID of broadcast) {
+                            sdk.client.session.prompt({
+                              sessionID: targetID,
+                              messageID: Identifier.ascending("message"),
+                              agent: local.agent.current().name,
+                              model: local.model.current()!,
+                              variant: local.model.variant.current(),
+                              sessionTrackingNumber: getSessionTrackingNumber(),
+                              parts: [
+                                {
+                                  id: Identifier.ascending("part"),
+                                  type: "text" as const,
+                                  text: promptInfo.input,
+                                },
+                                ...promptInfo.parts.filter((p) => p.type !== "text").map((x) => ({
+                                  id: Identifier.ascending("part"),
+                                  ...x,
+                                })),
+                              ],
+                            })
+                          }
+                        }
                       }}
                     />
                   </box>
