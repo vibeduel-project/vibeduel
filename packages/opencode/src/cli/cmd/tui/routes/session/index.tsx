@@ -299,19 +299,24 @@ export function Session() {
     }
   }
 
-  // Compute slot widths for +2 All view based on maximize animation
-  const slot0Width = createMemo(() => {
+  // Compute slot widths for All view based on maximize animation
+  // For +2: slots 0,1 share one row
+  // For +4: slots 0,1 in row 0; slots 2,3 in row 1
+  function computeRowSlotWidths(slotA: number, slotB: number): [number, number] {
     const total = dimensions().width
     const half = Math.floor(total / 2)
     const progress = maximizeProgress()
     const maxSlot = maximizedSlot()
-    if (maxSlot === null || progress === 0) return half
-    if (maxSlot === 0) return Math.floor(half + (total - half) * progress)
-    return Math.floor(half * (1 - progress))
-  })
-  const slot1Width = createMemo(() => {
-    return dimensions().width - slot0Width()
-  })
+    if (maxSlot === null || progress === 0) return [half, total - half]
+    if (maxSlot === slotA) return [Math.floor(half + (total - half) * progress), Math.floor(half * (1 - progress))]
+    if (maxSlot === slotB) return [Math.floor(half * (1 - progress)), Math.floor(half + (total - half) * progress)]
+    // Maximized slot is in a different row — no width change
+    return [half, total - half]
+  }
+  const slot0Width = createMemo(() => computeRowSlotWidths(0, 1)[0])
+  const slot1Width = createMemo(() => computeRowSlotWidths(0, 1)[1])
+  const slot2Width = createMemo(() => computeRowSlotWidths(2, 3)[0])
+  const slot3Width = createMemo(() => computeRowSlotWidths(2, 3)[1])
 
   // All view prompt: primary = first selected slot, broadcast = rest
   const allViewPrimarySessionID = createMemo(() => {
@@ -435,6 +440,29 @@ export function Session() {
   // Disable prompt only while models are actively generating in duel mode
   const promptDisabled = createMemo(() => isSplit() && awaitingVote() && !allDone())
 
+  // Compute row heights for +4 maximize animation
+  const row0Height = createMemo(() => {
+    if (allSessionIDs().length !== 4) return undefined // +2 uses "100%"
+    const voteBarHeight = showVoteControls() ? 5 : 0
+    const promptBarHeight = 4
+    const modelRevealH = (modelReveal() && !awaitingVote()) ? 2 : 0
+    const available = dimensions().height - voteBarHeight - promptBarHeight - modelRevealH
+    const half = Math.floor(available / 2)
+    const progress = maximizeProgress()
+    const maxSlot = maximizedSlot()
+    if (maxSlot === null || progress === 0) return half
+    if (maxSlot < 2) return Math.floor(half + (available - half) * progress)
+    return Math.floor(half * (1 - progress))
+  })
+  const row1Height = createMemo(() => {
+    if (allSessionIDs().length !== 4) return undefined
+    const voteBarHeight = showVoteControls() ? 5 : 0
+    const promptBarHeight = 4
+    const modelRevealH = (modelReveal() && !awaitingVote()) ? 2 : 0
+    const available = dimensions().height - voteBarHeight - promptBarHeight - modelRevealH
+    return available - (row0Height() ?? 0)
+  })
+
   // Vote bar height: paddingTop(1) + button row(3) + hint text(1) = 5
   // Prompt bar height: paddingBottom(1) + border(2) + input(1) = 4
   // Wrapper border: top(1) + bottom(1) = 2
@@ -442,8 +470,16 @@ export function Session() {
     const voteBarHeight = showVoteControls() ? 5 : 0
     const promptBarHeight = 4
     const wrapperBorder = 2
-    const rows = allSessionIDs().length === 4 ? 2 : 1
-    return Math.floor((dimensions().height - voteBarHeight - promptBarHeight) / rows) - wrapperBorder
+    if (allSessionIDs().length !== 4) {
+      return dimensions().height - voteBarHeight - promptBarHeight - wrapperBorder
+    }
+    // +4: use row0 height for default (both rows are same when not maximizing)
+    return Math.floor((row0Height() ?? 0)) - wrapperBorder
+  })
+  const allViewRow1PaneHeight = createMemo(() => {
+    if (allSessionIDs().length !== 4) return 0
+    const wrapperBorder = 2
+    return Math.floor((row1Height() ?? 0)) - wrapperBorder
   })
 
   createEffect(() => {
@@ -607,7 +643,7 @@ export function Session() {
     setLastChosenSessionID(freshID)
     setPendingForkIDs({ primaryID: freshID, opponentIDs })
     // Stay in All view but maximize the winner slot
-    if (isAllView() && allSessionIDs().length === 2) {
+    if (isAllView()) {
       toggleMaximize(slot)
     } else {
       setViewingSlot(slot)
@@ -883,20 +919,18 @@ export function Session() {
             </box>
           }>
             <box flexDirection="column" flexGrow={1} height="100%" onMouseMove={(e: any) => setMousePos({ x: e.x, y: e.y })}>
-              <box flexDirection="row" flexGrow={1} height={allSessionIDs().length === 4 ? "50%" : "100%"}>
+              <box flexDirection="row" flexGrow={allSessionIDs().length === 4 ? 0 : 1} height={allSessionIDs().length === 4 ? row0Height() : "100%"}>
                 <Show when={slot0Width() > 0}>
                   <box width={slot0Width()} height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(0) ? theme.success : theme.border} overflow="hidden">
                     <Show when={pendingForkWinner() === undefined}>
                       <box position="absolute" top={0} right={0} zIndex={200} flexDirection="row">
-                        <Show when={allSessionIDs().length === 2}>
-                          <box
-                            paddingLeft={1} paddingRight={1}
-                            backgroundColor={theme.backgroundElement}
-                            onMouseUp={() => toggleMaximize(0)}
-                          >
-                            <text fg={theme.text}>{maximizedSlot() === 0 ? "▾" : "▸"}</text>
-                          </box>
-                        </Show>
+                        <box
+                          paddingLeft={1} paddingRight={1}
+                          backgroundColor={theme.backgroundElement}
+                          onMouseUp={() => toggleMaximize(0)}
+                        >
+                          <text fg={theme.text}>{maximizedSlot() === 0 ? "▾" : "▸"}</text>
+                        </box>
                         <box
                           paddingLeft={1} paddingRight={1}
                           backgroundColor={selectedSlots().has(0) ? theme.success : theme.backgroundElement}
@@ -930,15 +964,13 @@ export function Session() {
                   <box width={slot1Width()} height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(1) ? theme.success : theme.border} overflow="hidden">
                     <Show when={pendingForkWinner() === undefined}>
                       <box position="absolute" top={0} right={0} zIndex={200} flexDirection="row">
-                        <Show when={allSessionIDs().length === 2}>
-                          <box
-                            paddingLeft={1} paddingRight={1}
-                            backgroundColor={theme.backgroundElement}
-                            onMouseUp={() => toggleMaximize(1)}
-                          >
-                            <text fg={theme.text}>{maximizedSlot() === 1 ? "▾" : "▸"}</text>
-                          </box>
-                        </Show>
+                        <box
+                          paddingLeft={1} paddingRight={1}
+                          backgroundColor={theme.backgroundElement}
+                          onMouseUp={() => toggleMaximize(1)}
+                        >
+                          <text fg={theme.text}>{maximizedSlot() === 1 ? "▾" : "▸"}</text>
+                        </box>
                         <box
                           paddingLeft={1} paddingRight={1}
                           backgroundColor={selectedSlots().has(1) ? theme.success : theme.backgroundElement}
@@ -969,62 +1001,88 @@ export function Session() {
                   </box>
                 </Show>
               </box>
-              <Show when={allSessionIDs().length === 4}>
-                <box flexDirection="row" flexGrow={1} height="50%">
-                  <box width="50%" height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(2) ? theme.success : theme.border} overflow="hidden">
-                    <box position="absolute" top={0} right={0} zIndex={200}
-                      paddingLeft={1} paddingRight={1}
-                      backgroundColor={selectedSlots().has(2) ? theme.success : theme.backgroundElement}
-                      onMouseUp={() => {
-                        setSelectedSlots(prev => {
-                          const next = new Set(prev)
-                          if (next.has(2)) next.delete(2); else next.add(2)
-                          duelLog.info("slot selector clicked", { slot: 2, selected: [...next], selectedSessionIDs: [...next].map(s => allSessionIDs()[s]) })
-                          return next
-                        })
-                      }}
-                    >
-                      <text fg={selectedSlots().has(2) ? theme.background : theme.text}>{selectedSlots().has(2) ? "✓" : "○"}</text>
+              <Show when={allSessionIDs().length === 4 && (row1Height() ?? 0) > 0}>
+                <box flexDirection="row" flexGrow={0} height={row1Height()}>
+                  <Show when={slot2Width() > 0}>
+                    <box width={slot2Width()} height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(2) ? theme.success : theme.border} overflow="hidden">
+                      <Show when={pendingForkWinner() === undefined}>
+                        <box position="absolute" top={0} right={0} zIndex={200} flexDirection="row">
+                          <box
+                            paddingLeft={1} paddingRight={1}
+                            backgroundColor={theme.backgroundElement}
+                            onMouseUp={() => toggleMaximize(2)}
+                          >
+                            <text fg={theme.text}>{maximizedSlot() === 2 ? "▾" : "▸"}</text>
+                          </box>
+                          <box
+                            paddingLeft={1} paddingRight={1}
+                            backgroundColor={selectedSlots().has(2) ? theme.success : theme.backgroundElement}
+                            onMouseUp={() => {
+                              setSelectedSlots(prev => {
+                                const next = new Set(prev)
+                                if (next.has(2)) next.delete(2); else next.add(2)
+                                duelLog.info("slot selector clicked", { slot: 2, selected: [...next], selectedSessionIDs: [...next].map(s => allSessionIDs()[s]) })
+                                return next
+                              })
+                            }}
+                          >
+                            <text fg={selectedSlots().has(2) ? theme.background : theme.text}>{selectedSlots().has(2) ? "✓" : "○"}</text>
+                          </box>
+                        </box>
+                      </Show>
+                      <SessionPane
+                        sessionID={allSessionIDs()[2]}
+                        width={slot2Width() - 2}
+                        height={allViewRow1PaneHeight()}
+                        isSplit={isSplit()}
+                        slot={2}
+                        controlSlot={controlSlot()}
+                        opponentSessionIDs={route.opponentSessionIDs}
+                        onScrollRef={(r) => { allViewScrollRefs[2] = r }}
+                        onScrollIntercept={routeScrollToCorrectSlot}
+                      />
                     </box>
-                    <SessionPane
-                      sessionID={allSessionIDs()[2]}
-                      width={Math.floor(dimensions().width / 2) - 2}
-                      height={allViewPaneHeight()}
-                      isSplit={isSplit()}
-                      slot={2}
-                      controlSlot={controlSlot()}
-                      opponentSessionIDs={route.opponentSessionIDs}
-                      onScrollRef={(r) => { allViewScrollRefs[2] = r }}
-                      onScrollIntercept={routeScrollToCorrectSlot}
-                    />
-                  </box>
-                  <box width="50%" height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(3) ? theme.success : theme.border} overflow="hidden">
-                    <box position="absolute" top={0} right={0} zIndex={200}
-                      paddingLeft={1} paddingRight={1}
-                      backgroundColor={selectedSlots().has(3) ? theme.success : theme.backgroundElement}
-                      onMouseUp={() => {
-                        setSelectedSlots(prev => {
-                          const next = new Set(prev)
-                          if (next.has(3)) next.delete(3); else next.add(3)
-                          duelLog.info("slot selector clicked", { slot: 3, selected: [...next], selectedSessionIDs: [...next].map(s => allSessionIDs()[s]) })
-                          return next
-                        })
-                      }}
-                    >
-                      <text fg={selectedSlots().has(3) ? theme.background : theme.text}>{selectedSlots().has(3) ? "✓" : "○"}</text>
+                  </Show>
+                  <Show when={slot3Width() > 0}>
+                    <box width={slot3Width()} height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(3) ? theme.success : theme.border} overflow="hidden">
+                      <Show when={pendingForkWinner() === undefined}>
+                        <box position="absolute" top={0} right={0} zIndex={200} flexDirection="row">
+                          <box
+                            paddingLeft={1} paddingRight={1}
+                            backgroundColor={theme.backgroundElement}
+                            onMouseUp={() => toggleMaximize(3)}
+                          >
+                            <text fg={theme.text}>{maximizedSlot() === 3 ? "▾" : "▸"}</text>
+                          </box>
+                          <box
+                            paddingLeft={1} paddingRight={1}
+                            backgroundColor={selectedSlots().has(3) ? theme.success : theme.backgroundElement}
+                            onMouseUp={() => {
+                              setSelectedSlots(prev => {
+                                const next = new Set(prev)
+                                if (next.has(3)) next.delete(3); else next.add(3)
+                                duelLog.info("slot selector clicked", { slot: 3, selected: [...next], selectedSessionIDs: [...next].map(s => allSessionIDs()[s]) })
+                                return next
+                              })
+                            }}
+                          >
+                            <text fg={selectedSlots().has(3) ? theme.background : theme.text}>{selectedSlots().has(3) ? "✓" : "○"}</text>
+                          </box>
+                        </box>
+                      </Show>
+                      <SessionPane
+                        sessionID={allSessionIDs()[3]}
+                        width={slot3Width() - 2}
+                        height={allViewRow1PaneHeight()}
+                        isSplit={isSplit()}
+                        slot={3}
+                        controlSlot={controlSlot()}
+                        opponentSessionIDs={route.opponentSessionIDs}
+                        onScrollRef={(r) => { allViewScrollRefs[3] = r }}
+                        onScrollIntercept={routeScrollToCorrectSlot}
+                      />
                     </box>
-                    <SessionPane
-                      sessionID={allSessionIDs()[3]}
-                      width={Math.floor(dimensions().width / 2) - 2}
-                      height={allViewPaneHeight()}
-                      isSplit={isSplit()}
-                      slot={3}
-                      controlSlot={controlSlot()}
-                      opponentSessionIDs={route.opponentSessionIDs}
-                      onScrollRef={(r) => { allViewScrollRefs[3] = r }}
-                      onScrollIntercept={routeScrollToCorrectSlot}
-                    />
-                  </box>
+                  </Show>
                 </box>
               </Show>
               <Show when={showVoteControls()}>
