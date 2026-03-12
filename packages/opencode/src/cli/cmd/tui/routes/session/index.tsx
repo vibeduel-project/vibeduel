@@ -137,6 +137,7 @@ const LOG_HOVER_POLL = _env["VIBEDUEL_LOG_HOVER_POLL"] === "1"
 const LOG_SLOT_MESSAGES = _env["VIBEDUEL_LOG_SLOT_MESSAGES"] === "1"
 const LOG_VOTE_BUTTONS = _env["VIBEDUEL_LOG_VOTE_BUTTONS"] === "1"
 const LOG_PANE_STATE = _env["VIBEDUEL_LOG_PANE_STATE"] === "1"
+const LOG_LAYOUT_POSITIONS = _env["VIBEDUEL_LOG_LAYOUT_POSITIONS"] === "1"
 
 export function Session() {
   const route = useRouteData("session")
@@ -230,19 +231,10 @@ export function Session() {
       duelLog.info("hover poll", { result: "no mouse position", x, y })
       return
     }
-    const tabBarHeight = 6
-    const halfW = Math.floor(dimensions().width / 2)
-    const halfH = Math.floor((dimensions().height - tabBarHeight) / 2)
-    const col = x < halfW ? 0 : 1
-    const row = y < tabBarHeight + halfH ? 0 : 1
     const slotCount = allSessionIDs().length
-    let slot: number
-    if (slotCount === 2) {
-      slot = col
-    } else {
-      slot = row * 2 + col
-    }
-    duelLog.info("hover poll", { slot, x, y, col, row, halfW, halfH, tabBarHeight, slotCount })
+    const colWidth = slotCount > 1 ? Math.floor(dimensions().width / slotCount) : dimensions().width
+    const slot = Math.min(Math.floor(x / colWidth), slotCount - 1)
+    duelLog.info("hover poll", { slot, x, y, colWidth, slotCount })
   }, 1000)
   onCleanup(() => clearInterval(hoverPollTimer))
 
@@ -257,6 +249,57 @@ export function Session() {
   const allViewScrollRefs: (ScrollBoxRenderable | undefined)[] = []
   const [selectedSlots, setSelectedSlots] = createSignal<Set<number>>(new Set())
 
+  // Layout refs for position logging
+  let gridContainerRef: any = undefined
+  let row0BoxRef: any = undefined
+  let slot0BoxRef: any = undefined
+  let slot1BoxRef: any = undefined
+  let row1BoxRef: any = undefined
+  let slot2BoxRef: any = undefined
+  let slot3BoxRef: any = undefined
+  let voteControlsBoxRef: any = undefined
+  let promptWrapperBoxRef: any = undefined
+
+  function logLayoutPositions(label: string) {
+    if (!LOG_LAYOUT_POSITIONS) return
+    const entries: Record<string, { topLeft: [number, number], topRight: [number, number], w: number, h: number } | null> = {}
+    const refs: Record<string, any> = {
+      gridContainer: gridContainerRef,
+      row0: row0BoxRef,
+      slot0: slot0BoxRef,
+      slot1: slot1BoxRef,
+      row1: row1BoxRef,
+      slot2: slot2BoxRef,
+      slot3: slot3BoxRef,
+      voteControls: voteControlsBoxRef,
+      promptWrapper: promptWrapperBoxRef,
+    }
+    for (const [name, ref] of Object.entries(refs)) {
+      if (!ref) {
+        entries[name] = null
+        continue
+      }
+      entries[name] = {
+        topLeft: [ref.x, ref.y],
+        topRight: [ref.x + ref.width, ref.y],
+        w: ref.width,
+        h: ref.height,
+      }
+    }
+    duelLog.info(`layout positions: ${label}`, {
+      terminalDimensions: { w: dimensions().width, h: dimensions().height },
+      allSessionIDs: allSessionIDs().length,
+      row0Height: row0Height(),
+      allViewPaneHeight: allViewPaneHeight(),
+      ...entries,
+    })
+  }
+
+  createEffect(() => {
+    const d = dimensions()
+    logLayoutPositions(`terminal-resize (${d.width}x${d.height})`)
+  })
+
   // Maximize animation for +2 All view
   const [maximizedSlot, setMaximizedSlot] = createSignal<number | null>(null)
   const [maximizeTarget, setMaximizeTarget] = createSignal<number | null>(null) // target state: slot to maximize, or null to restore
@@ -267,6 +310,7 @@ export function Session() {
   function toggleMaximize(slot: number) {
     if (maximizedSlot() === slot) {
       // Minimize: animate back
+      logLayoutPositions(`toggleMaximize:minimize:before (slot ${slot})`)
       duelLog.info("maximize: minimizing", {
         slot,
         fromProgress: maximizeProgress(),
@@ -293,10 +337,12 @@ export function Session() {
             slot0Width: slot0Width(),
             slot1Width: slot1Width(),
           })
+          logLayoutPositions(`toggleMaximize:minimize:after (slot ${slot})`)
         }
       }, MAXIMIZE_ANIM_STEP)
     } else {
       // Maximize: animate to full
+      logLayoutPositions(`toggleMaximize:maximize:before (slot ${slot})`)
       duelLog.info("maximize: maximizing", {
         slot,
         fromProgress: maximizeProgress(),
@@ -323,45 +369,41 @@ export function Session() {
             slot0Width: slot0Width(),
             slot1Width: slot1Width(),
           })
+          logLayoutPositions(`toggleMaximize:maximize:after (slot ${slot})`)
         }
       }, MAXIMIZE_ANIM_STEP)
     }
   }
 
   // Compute slot widths for All view based on maximize animation
-  // For +2: slots 0,1 share one row
-  // For +4: slots 0,1 in row 0; slots 2,3 in row 1
-  function computeRowSlotWidths(slotA: number, slotB: number): [number, number] {
+  // All slots share a single row (2 slots for +2, 4 slots for +4)
+  function computeSlotWidth(slot: number): number {
     const total = dimensions().width
-    const half = Math.floor(total / 2)
+    const count = allSessionIDs().length
+    if (count <= 1) return total
+    const base = Math.floor(total / count)
     const progress = maximizeProgress()
     const maxSlot = maximizedSlot()
-    if (maxSlot === null || progress === 0) return [half, total - half]
-    let resultA: number, resultB: number
-    if (maxSlot === slotA) {
-      resultA = Math.floor(half + (total - half) * progress)
-      resultB = Math.floor(half * (1 - progress))
-    } else if (maxSlot === slotB) {
-      resultA = Math.floor(half * (1 - progress))
-      resultB = Math.floor(half + (total - half) * progress)
-    } else {
-      // Maximized slot is in a different row — no width change
-      return [half, total - half]
+    if (maxSlot === null || progress === 0) {
+      // Last slot gets remainder to avoid rounding gaps
+      return slot === count - 1 ? total - base * (count - 1) : base
     }
-    if (progress > 0 && progress < 1) {
-      duelLog.info("slotWidths animating", {
-        slotA, slotB, total, half, progress, maxSlot,
-        resultA, resultB,
-      })
+    if (slot === maxSlot) {
+      // Maximized slot grows toward full width
+      return Math.floor(base + (total - base) * progress)
     }
-    return [resultA, resultB]
+    // Other slots shrink to share remaining space
+    const remaining = total - Math.floor(base + (total - base) * progress)
+    const othersCount = count - 1
+    const otherBase = Math.floor(remaining / othersCount)
+    // Find this slot's index among the "others"
+    const otherIndex = slot < maxSlot ? slot : slot - 1
+    return otherIndex === othersCount - 1 ? remaining - otherBase * (othersCount - 1) : otherBase
   }
-  const slot0Width = createMemo(() =>
-    allSessionIDs().length === 1 ? dimensions().width : computeRowSlotWidths(0, 1)[0]
-  )
-  const slot1Width = createMemo(() => computeRowSlotWidths(0, 1)[1])
-  const slot2Width = createMemo(() => computeRowSlotWidths(2, 3)[0])
-  const slot3Width = createMemo(() => computeRowSlotWidths(2, 3)[1])
+  const slot0Width = createMemo(() => computeSlotWidth(0))
+  const slot1Width = createMemo(() => computeSlotWidth(1))
+  const slot2Width = createMemo(() => computeSlotWidth(2))
+  const slot3Width = createMemo(() => computeSlotWidth(3))
 
   // All view prompt: primary = first selected slot, broadcast = rest
   const allViewPrimarySessionID = createMemo(() => {
@@ -376,14 +418,10 @@ export function Session() {
   })
 
   function getSlotAtMouse(x: number, y: number): number | null {
-    const tabBarH = 6
-    const halfW = Math.floor(dimensions().width / 2)
     const slotCount = allSessionIDs().length
-    const col = x < halfW ? 0 : 1
-    if (slotCount === 2) return col
-    const halfH = Math.floor((dimensions().height - tabBarH) / 2)
-    const row = y < tabBarH + halfH ? 0 : 1
-    return row * 2 + col
+    if (slotCount <= 1) return 0
+    const colWidth = Math.floor(dimensions().width / slotCount)
+    return Math.min(Math.floor(x / colWidth), slotCount - 1)
   }
 
   function routeScrollToCorrectSlot(sourceSlot: number, event: any) {
@@ -479,45 +517,20 @@ export function Session() {
   const promptDisabled = createMemo(() => isSplit() && awaitingVote() && !allDone())
 
   // Compute row heights for +4 maximize animation
+  // All modes use a single row — row0Height is the full available height
   const row0Height = createMemo(() => {
-    if (allSessionIDs().length !== 4) return undefined // +2 uses "100%"
     const voteBarHeight = showVoteControls() ? 5 : 0
-    const promptBarHeight = 4
+    const promptBarHeight = 7
     const modelRevealH = (modelReveal() && !awaitingVote()) ? 2 : 0
-    const available = dimensions().height - voteBarHeight - promptBarHeight - modelRevealH
-    const half = Math.floor(available / 2)
-    const progress = maximizeProgress()
-    const maxSlot = maximizedSlot()
-    if (maxSlot === null || progress === 0) return half
-    if (maxSlot < 2) return Math.floor(half + (available - half) * progress)
-    return Math.floor(half * (1 - progress))
-  })
-  const row1Height = createMemo(() => {
-    if (allSessionIDs().length !== 4) return undefined
-    const voteBarHeight = showVoteControls() ? 5 : 0
-    const promptBarHeight = 4
-    const modelRevealH = (modelReveal() && !awaitingVote()) ? 2 : 0
-    const available = dimensions().height - voteBarHeight - promptBarHeight - modelRevealH
-    return available - (row0Height() ?? 0)
+    return dimensions().height - voteBarHeight - promptBarHeight - modelRevealH
   })
 
   // Vote bar height: paddingTop(1) + button row(3) + hint text(1) = 5
-  // Prompt bar height: paddingBottom(1) + border(2) + input(1) = 4
+  // Prompt bar height: paddingBottom(1) + border(2) + padding(2) + input(1) + mode hint(1) = 7
   // Wrapper border: top(1) + bottom(1) = 2
   const allViewPaneHeight = createMemo(() => {
-    const voteBarHeight = showVoteControls() ? 5 : 0
-    const promptBarHeight = 4
     const wrapperBorder = allSessionIDs().length > 1 ? 2 : 0
-    if (allSessionIDs().length !== 4) {
-      return dimensions().height - voteBarHeight - promptBarHeight - wrapperBorder
-    }
-    // +4: use row0 height for default (both rows are same when not maximizing)
-    return Math.floor((row0Height() ?? 0)) - wrapperBorder
-  })
-  const allViewRow1PaneHeight = createMemo(() => {
-    if (allSessionIDs().length !== 4) return 0
-    const wrapperBorder = 2
-    return Math.floor((row1Height() ?? 0)) - wrapperBorder
+    return (row0Height() ?? 0) - wrapperBorder
   })
 
   createEffect(() => {
@@ -760,6 +773,8 @@ export function Session() {
     if (from === to) return
 
     switchModeInProgress = true
+    allViewScrollRefs.length = 0
+    logLayoutPositions(`switchMode:before (${from} → ${to})`)
 
     duelLog.info("switchMode", {
       from, to,
@@ -856,6 +871,7 @@ export function Session() {
       pendingForkIDs: pendingForkIDs(),
       duelCount: getDuelCount(),
     })
+    logLayoutPositions(`switchMode:after (${from} → ${to})`)
   }
 
   // Auto-duel effect: when model is set to "duel" externally (e.g. auto-duel on low credits),
@@ -913,12 +929,15 @@ export function Session() {
     setPreviewedSlot(null)
     setAwaitingVote(false)
     setLastChosenSessionID(undefined)
+    allViewScrollRefs.length = 0
 
+    logLayoutPositions("exit-duel:before-navigate")
     navigate({
       type: "session",
       sessionID: selectedID,
       opponentSessionIDs: undefined,
     })
+    logLayoutPositions("exit-duel:after-navigate")
   })
 
   function VoteButtons() {
@@ -1013,10 +1032,10 @@ export function Session() {
     >
       <box flexDirection="column">
         <box flexDirection="column" flexGrow={1}>
-          <box flexDirection="column" flexGrow={1} height="100%" onMouseMove={(e: any) => setMousePos({ x: e.x, y: e.y })}>
-              <box flexDirection="row" flexGrow={allSessionIDs().length === 4 ? 0 : 1} height={allSessionIDs().length === 4 ? row0Height() : "100%"}>
+          <box flexDirection="column" flexGrow={1} ref={(r: any) => { gridContainerRef = r }} onMouseMove={(e: any) => setMousePos({ x: e.x, y: e.y })}>
+              <box flexDirection="row" flexGrow={0} height={row0Height()} ref={(r: any) => { row0BoxRef = r }}>
                 <Show when={slot0Width() > 0}>
-                  <box width={slot0Width()} height="100%" border={allSessionIDs().length > 1 ? ["left", "right", "top", "bottom"] : undefined} borderColor={selectedSlots().has(0) ? theme.success : theme.border} overflow="hidden">
+                  <box ref={(r: any) => { slot0BoxRef = r }} width={slot0Width()} height="100%" border={allSessionIDs().length > 1 ? ["left", "right", "top", "bottom"] : undefined} borderColor={selectedSlots().has(0) ? theme.success : theme.border} overflow="hidden">
                     <Show when={pendingForkWinner() === undefined && allSessionIDs().length > 1}>
                       <box position="absolute" top={0} right={0} zIndex={200} flexDirection="row">
                         <box
@@ -1056,7 +1075,7 @@ export function Session() {
                   </box>
                 </Show>
                 <Show when={slot1Width() > 0 && allSessionIDs()[1]}>
-                  <box width={slot1Width()} height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(1) ? theme.success : theme.border} overflow="hidden">
+                  <box ref={(r: any) => { slot1BoxRef = r }} width={slot1Width()} height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(1) ? theme.success : theme.border} overflow="hidden">
                     <Show when={pendingForkWinner() === undefined}>
                       <box position="absolute" top={0} right={0} zIndex={200} flexDirection="row">
                         <box
@@ -1095,93 +1114,89 @@ export function Session() {
                     />
                   </box>
                 </Show>
+                <Show when={slot2Width() > 0 && allSessionIDs()[2]}>
+                  <box ref={(r: any) => { slot2BoxRef = r }} width={slot2Width()} height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(2) ? theme.success : theme.border} overflow="hidden">
+                    <Show when={pendingForkWinner() === undefined}>
+                      <box position="absolute" top={0} right={0} zIndex={200} flexDirection="row">
+                        <box
+                          paddingLeft={1} paddingRight={1}
+                          backgroundColor={theme.backgroundElement}
+                          onMouseUp={() => toggleMaximize(2)}
+                        >
+                          <text fg={theme.text}>{maximizedSlot() === 2 ? "▾" : "▸"}</text>
+                        </box>
+                        <box
+                          paddingLeft={1} paddingRight={1}
+                          backgroundColor={selectedSlots().has(2) ? theme.success : theme.backgroundElement}
+                          onMouseUp={() => {
+                            setSelectedSlots(prev => {
+                              const next = new Set(prev)
+                              if (next.has(2)) next.delete(2); else next.add(2)
+                              duelLog.info("slot selector clicked", { slot: 2, selected: [...next], selectedSessionIDs: [...next].map(s => allSessionIDs()[s]) })
+                              return next
+                            })
+                          }}
+                        >
+                          <text fg={selectedSlots().has(2) ? theme.background : theme.text}>{selectedSlots().has(2) ? "✓" : "○"}</text>
+                        </box>
+                      </box>
+                    </Show>
+                    <SessionPane
+                      sessionID={allSessionIDs()[2]}
+                      width={slot2Width() - 2}
+                      height={allViewPaneHeight()}
+                      isSplit={isSplit()}
+                      slot={2}
+                      controlSlot={controlSlot()}
+                      opponentSessionIDs={route.opponentSessionIDs}
+                      onScrollRef={(r) => { allViewScrollRefs[2] = r }}
+                      onScrollIntercept={routeScrollToCorrectSlot}
+                    />
+                  </box>
+                </Show>
+                <Show when={slot3Width() > 0 && allSessionIDs()[3]}>
+                  <box ref={(r: any) => { slot3BoxRef = r }} width={slot3Width()} height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(3) ? theme.success : theme.border} overflow="hidden">
+                    <Show when={pendingForkWinner() === undefined}>
+                      <box position="absolute" top={0} right={0} zIndex={200} flexDirection="row">
+                        <box
+                          paddingLeft={1} paddingRight={1}
+                          backgroundColor={theme.backgroundElement}
+                          onMouseUp={() => toggleMaximize(3)}
+                        >
+                          <text fg={theme.text}>{maximizedSlot() === 3 ? "▾" : "▸"}</text>
+                        </box>
+                        <box
+                          paddingLeft={1} paddingRight={1}
+                          backgroundColor={selectedSlots().has(3) ? theme.success : theme.backgroundElement}
+                          onMouseUp={() => {
+                            setSelectedSlots(prev => {
+                              const next = new Set(prev)
+                              if (next.has(3)) next.delete(3); else next.add(3)
+                              duelLog.info("slot selector clicked", { slot: 3, selected: [...next], selectedSessionIDs: [...next].map(s => allSessionIDs()[s]) })
+                              return next
+                            })
+                          }}
+                        >
+                          <text fg={selectedSlots().has(3) ? theme.background : theme.text}>{selectedSlots().has(3) ? "✓" : "○"}</text>
+                        </box>
+                      </box>
+                    </Show>
+                    <SessionPane
+                      sessionID={allSessionIDs()[3]}
+                      width={slot3Width() - 2}
+                      height={allViewPaneHeight()}
+                      isSplit={isSplit()}
+                      slot={3}
+                      controlSlot={controlSlot()}
+                      opponentSessionIDs={route.opponentSessionIDs}
+                      onScrollRef={(r) => { allViewScrollRefs[3] = r }}
+                      onScrollIntercept={routeScrollToCorrectSlot}
+                    />
+                  </box>
+                </Show>
               </box>
-              <Show when={allSessionIDs().length === 4 && (row1Height() ?? 0) > 0}>
-                <box flexDirection="row" flexGrow={0} height={row1Height()}>
-                  <Show when={slot2Width() > 0}>
-                    <box width={slot2Width()} height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(2) ? theme.success : theme.border} overflow="hidden">
-                      <Show when={pendingForkWinner() === undefined}>
-                        <box position="absolute" top={0} right={0} zIndex={200} flexDirection="row">
-                          <box
-                            paddingLeft={1} paddingRight={1}
-                            backgroundColor={theme.backgroundElement}
-                            onMouseUp={() => toggleMaximize(2)}
-                          >
-                            <text fg={theme.text}>{maximizedSlot() === 2 ? "▾" : "▸"}</text>
-                          </box>
-                          <box
-                            paddingLeft={1} paddingRight={1}
-                            backgroundColor={selectedSlots().has(2) ? theme.success : theme.backgroundElement}
-                            onMouseUp={() => {
-                              setSelectedSlots(prev => {
-                                const next = new Set(prev)
-                                if (next.has(2)) next.delete(2); else next.add(2)
-                                duelLog.info("slot selector clicked", { slot: 2, selected: [...next], selectedSessionIDs: [...next].map(s => allSessionIDs()[s]) })
-                                return next
-                              })
-                            }}
-                          >
-                            <text fg={selectedSlots().has(2) ? theme.background : theme.text}>{selectedSlots().has(2) ? "✓" : "○"}</text>
-                          </box>
-                        </box>
-                      </Show>
-                      <SessionPane
-                        sessionID={allSessionIDs()[2]}
-                        width={slot2Width() - 2}
-                        height={allViewRow1PaneHeight()}
-                        isSplit={isSplit()}
-                        slot={2}
-                        controlSlot={controlSlot()}
-                        opponentSessionIDs={route.opponentSessionIDs}
-                        onScrollRef={(r) => { allViewScrollRefs[2] = r }}
-                        onScrollIntercept={routeScrollToCorrectSlot}
-                      />
-                    </box>
-                  </Show>
-                  <Show when={slot3Width() > 0}>
-                    <box width={slot3Width()} height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(3) ? theme.success : theme.border} overflow="hidden">
-                      <Show when={pendingForkWinner() === undefined}>
-                        <box position="absolute" top={0} right={0} zIndex={200} flexDirection="row">
-                          <box
-                            paddingLeft={1} paddingRight={1}
-                            backgroundColor={theme.backgroundElement}
-                            onMouseUp={() => toggleMaximize(3)}
-                          >
-                            <text fg={theme.text}>{maximizedSlot() === 3 ? "▾" : "▸"}</text>
-                          </box>
-                          <box
-                            paddingLeft={1} paddingRight={1}
-                            backgroundColor={selectedSlots().has(3) ? theme.success : theme.backgroundElement}
-                            onMouseUp={() => {
-                              setSelectedSlots(prev => {
-                                const next = new Set(prev)
-                                if (next.has(3)) next.delete(3); else next.add(3)
-                                duelLog.info("slot selector clicked", { slot: 3, selected: [...next], selectedSessionIDs: [...next].map(s => allSessionIDs()[s]) })
-                                return next
-                              })
-                            }}
-                          >
-                            <text fg={selectedSlots().has(3) ? theme.background : theme.text}>{selectedSlots().has(3) ? "✓" : "○"}</text>
-                          </box>
-                        </box>
-                      </Show>
-                      <SessionPane
-                        sessionID={allSessionIDs()[3]}
-                        width={slot3Width() - 2}
-                        height={allViewRow1PaneHeight()}
-                        isSplit={isSplit()}
-                        slot={3}
-                        controlSlot={controlSlot()}
-                        opponentSessionIDs={route.opponentSessionIDs}
-                        onScrollRef={(r) => { allViewScrollRefs[3] = r }}
-                        onScrollIntercept={routeScrollToCorrectSlot}
-                      />
-                    </box>
-                  </Show>
-                </box>
-              </Show>
               <Show when={showVoteControls()}>
-                <box flexShrink={0} flexDirection="column" alignItems="center" paddingTop={1} gap={0}>
+                <box ref={(r: any) => { voteControlsBoxRef = r }} flexShrink={0} flexDirection="column" alignItems="center" paddingTop={1} gap={0}>
                   <VoteButtons />
                   <VoteHint />
                 </box>
@@ -1199,7 +1214,7 @@ export function Session() {
                   </For>
                 </box>
               </Show>
-              <box flexShrink={0} justifyContent="center" alignItems="center" paddingLeft={2} paddingRight={2} paddingBottom={1}>
+              <box ref={(r: any) => { promptWrapperBoxRef = r }} flexShrink={0} justifyContent="center" alignItems="center" paddingLeft={2} paddingRight={2} paddingBottom={1}>
                 <box width="100%" maxWidth={promptMaxWidth()}>
                   <Prompt
                     visible={true}
@@ -1303,6 +1318,7 @@ export function Session() {
                             newOpponentIDs,
                             duelSessionId,
                           })
+                          logLayoutPositions("onSubmit:duel-entry:before-navigate")
                           navigate({
                             type: "session",
                             sessionID: primaryID,
@@ -1310,6 +1326,7 @@ export function Session() {
                             duelSessionId: duelSessionId,
                           })
                           setAwaitingVote(true)
+                          logLayoutPositions("onSubmit:duel-entry:after-navigate")
 
                           // Animate: minimize slot 0 to reveal opponents
                           // (allSessionIDs now has 2+ items, computeRowSlotWidths kicks in)
@@ -1387,6 +1404,7 @@ export function Session() {
                             awaitingVote: true,
                             duelSessionId,
                           })
+                          logLayoutPositions("onSubmit:fork-next:before-navigate")
                           if (maximizedSlot() !== null) {
                             toggleMaximize(maximizedSlot()!)
                             setTimeout(() => {
@@ -1397,12 +1415,14 @@ export function Session() {
                                 maximizeProgress: maximizeProgress(),
                                 isSplit: isSplit(),
                               })
+                              logLayoutPositions("onSubmit:fork-next:before-delayed-navigate")
                               navigate({
                                 type: "session",
                                 sessionID: primaryID,
                                 opponentSessionIDs: newOpponentIDs,
                                 duelSessionId: duelSessionId,
                               })
+                              logLayoutPositions("onSubmit:fork-next:after-delayed-navigate")
                             }, MAXIMIZE_ANIM_DURATION + 50)
                           } else {
                             navigate({
@@ -1411,6 +1431,7 @@ export function Session() {
                               opponentSessionIDs: newOpponentIDs,
                               duelSessionId: duelSessionId,
                             })
+                            logLayoutPositions("onSubmit:fork-next:after-navigate")
                           }
                           return
                         }

@@ -681,8 +681,10 @@ export namespace SessionPrompt {
         }
       },
       async ask(req) {
-        // In duel mode, auto-approve everything — edits go to isolated worktrees
-        if (getDuelWorktree(input.session.id)) {
+        // In duel mode, auto-approve non-bash permissions — edits go to isolated worktrees.
+        // Bash is excluded here so it reaches the TUI for user approval.
+        // LINKED: permission.tsx also skips auto-approve for bash in duel mode.
+        if (getDuelWorktree(input.session.id) && req.permission !== "bash") {
           log.info("duel: auto-approved permission", { sessionID: input.session.id, permission: req.permission })
           return
         }

@@ -120,6 +120,13 @@ export function PermissionPrompt(props: {
   createEffect(() => {
     if (autoReplied.done) return
     if (props.request.permission === "edit") return
+    // In duel mode, don't auto-approve bash — require user approval.
+    // LINKED: prompt.ts also excludes bash from duel auto-approve so it reaches the TUI.
+    const isDuel = props.opponentSessionIDs && props.opponentSessionIDs.length > 0
+    if (isDuel && props.request.permission === "bash") {
+      logToSlot(props.slot, `Duel bash permission requires user approval: ${props.request.permission} (${props.request.id})`)
+      return
+    }
     setAutoReplied("done", true)
     logToSlot(props.slot, `Auto-allowing permission: ${props.request.permission} (${props.request.id})`)
     if (props.onPermissionHandled && props.request.tool) {
