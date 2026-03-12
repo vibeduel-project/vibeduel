@@ -131,6 +131,13 @@ function use() {
 
 const duelLog = Log.create({ service: "duel" })
 
+const _env = typeof Bun !== "undefined" ? (Bun as { env: Record<string, string | undefined> }).env : process.env
+const LOG_SESSIONPANE_DIMENSIONS = _env["VIBEDUEL_LOG_SESSIONPANE_DIMENSIONS"] === "1"
+const LOG_HOVER_POLL = _env["VIBEDUEL_LOG_HOVER_POLL"] === "1"
+const LOG_SLOT_MESSAGES = _env["VIBEDUEL_LOG_SLOT_MESSAGES"] === "1"
+const LOG_VOTE_BUTTONS = _env["VIBEDUEL_LOG_VOTE_BUTTONS"] === "1"
+const LOG_PANE_STATE = _env["VIBEDUEL_LOG_PANE_STATE"] === "1"
+
 export function Session() {
   const route = useRouteData("session")
   const { navigate } = useRoute()
@@ -221,6 +228,7 @@ export function Session() {
   // Mouse hover tracking for All view debug logging
   const [mousePos, setMousePos] = createSignal<{ x: number; y: number }>({ x: -1, y: -1 })
   const hoverPollTimer = setInterval(() => {
+    if (!LOG_HOVER_POLL) return
     if (!isAllView()) {
       duelLog.info("hover poll", { result: "not in all view" })
       return
@@ -477,7 +485,7 @@ export function Session() {
       })
       return { slot: i, sessionID: id, count: msgs.length, messages: details }
     })
-    duelLog.info("slotMessages state", { slots: summary })
+    if (LOG_SLOT_MESSAGES) duelLog.info("slotMessages state", { slots: summary })
   })
 
   // Show vote controls when all models are done and awaiting vote
@@ -535,7 +543,7 @@ export function Session() {
     const disabled = promptDisabled()
     const voteControls = showVoteControls()
     const visible = prompt && voteControls
-    duelLog.info("vote-buttons visibility changed", {
+    if (LOG_VOTE_BUTTONS) duelLog.info("vote-buttons visibility changed", {
       visible,
       showPrompt: prompt,
       promptDisabled: disabled,
@@ -1304,16 +1312,22 @@ export function Session() {
                       (pendingForkWinner() !== undefined ? local.model.current()?.modelID === "duel" : false) ||
                       pendingDuelEntry()
                     }
-                    awaitingVote={false}
+                    awaitingVote={awaitingVote()}
                     skipAutoSend={pendingForkWinner() !== undefined || pendingDuelEntry()}
                     onSwitchMode={() => switchMode()}
-                    duelSessionId={pendingForkWinner() !== undefined ? currentDuelId() : undefined}
+                    duelSessionId={
+                      pendingForkWinner() !== undefined || awaitingVote()
+                        ? currentDuelId()
+                        : undefined
+                    }
                     disabled={false}
                     focused={isAllView()}
                     sessionID={allViewPrimarySessionID()!}
                       onSubmit={async (_sessionID, promptInfo, duelSessionId) => {
                         duelLog.info("allView onSubmit entry", {
                           sessionID: _sessionID,
+                          selectedSlots: [...selectedSlots()],
+                          selectedSessionIDs: [...selectedSlots()].map(s => allSessionIDs()[s]),
                           pendingDuelEntry: pendingDuelEntry(),
                           pendingForkWinner: pendingForkWinner(),
                           pendingForkIDs: pendingForkIDs(),
@@ -1524,6 +1538,7 @@ export function Session() {
                               model: local.model.current()!,
                               variant: local.model.variant.current(),
                               sessionTrackingNumber: getSessionTrackingNumber(),
+                              ...(currentDuelId() ? { duelSessionId: currentDuelId() } : {}),
                               parts: [
                                 {
                                   id: Identifier.ascending("part"),
@@ -1593,6 +1608,8 @@ export function Session() {
                       duelSessionId,
                       pendingForkWinner: winnerSlot,
                       skipAutoSend: winnerSlot !== undefined,
+                      selectedSlots: [...selectedSlots()],
+                      selectedSessionIDs: [...selectedSlots()].map(s => allSessionIDs()[s]),
                       sessionIDs: allSessionIDs(),
                     })
 
@@ -1716,7 +1733,7 @@ function SessionPane(props: {
   duelLog.info("SessionPane mount", { slot: props.slot, sessionID: props.sessionID })
 
   createEffect(() => {
-    duelLog.info("SessionPane dimensions", { slot: props.slot, width: props.width, height: props.height })
+    if (LOG_SESSIONPANE_DIMENSIONS) duelLog.info("SessionPane dimensions", { slot: props.slot, width: props.width, height: props.height })
   })
 
   const session = createMemo(() => sync.session.get(props.sessionID))
@@ -1786,7 +1803,7 @@ function SessionPane(props: {
     const msgs = messages()
     const last = lastAssistant()
     const p = pending()
-    duelLog.info("pane state", {
+    if (LOG_PANE_STATE) duelLog.info("pane state", {
       slot: props.slot,
       sessionID: props.sessionID,
       messageCount: msgs.length,
