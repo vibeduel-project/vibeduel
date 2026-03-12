@@ -44,7 +44,7 @@ import { SessionStatus } from "./status"
 import { LLM } from "./llm"
 import { iife } from "@/util/iife"
 import { Shell } from "@/shell/shell"
-import { setDuel, clearDuel, setDuelWorktree, clearDuelWorktree, createDuelWorktrees, getDuelWorktree } from "@/duel"
+import { setDuel, clearDuel, setDuelWorktree, clearDuelWorktree, createDuelWorktrees, getDuel, getDuelWorktree, getDuelSlot } from "@/duel"
 import { setSessionTrackingNumber } from "@/session-tracking"
 
 // @ts-ignore
@@ -729,7 +729,16 @@ export namespace SessionPrompt {
               args,
             },
           )
-          const result = await item.execute(args, ctx)
+          let result: Awaited<ReturnType<typeof item.execute>>
+          try {
+            result = await item.execute(args, ctx)
+          } catch (e: any) {
+            const duelId = getDuel(ctx.sessionID)
+            if (duelId) {
+              log.error("duel tool error", { tool: item.id, slot: getDuelSlot(ctx.sessionID), sessionID: ctx.sessionID, duelId, worktree, args, error: e?.toString() })
+            }
+            throw e
+          }
           await Plugin.trigger(
             "tool.execute.after",
             {

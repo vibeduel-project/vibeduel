@@ -8,6 +8,10 @@ import path from "path"
 
 const log = Log.create({ service: "duel" })
 
+const _env = typeof Bun !== "undefined" ? (Bun as { env: Record<string, string | undefined> }).env : process.env
+const LOG_WORKTREE_DUMPS = _env["VIBEDUEL_LOG_WORKTREE_DUMPS"] === "1"
+export const LOG_DUEL_TOOL_OPS = _env["VIBEDUEL_LOG_DUEL_TOOL_OPS"] === "1"
+
 export const DUEL_WORKTREE_BASE = path.join(os.homedir(), ".local", "share", "vibeduel", "worktree")
 
 // Maps opencode sessionID -> backend duel session ID
@@ -48,6 +52,16 @@ export function getDuelWorktree(sessionID: string): string | undefined {
 export function clearDuelWorktree(sessionID: string): void {
   log.info("clearDuelWorktree", { sessionID })
   duelWorktrees.delete(sessionID)
+}
+
+// Extract slot number from a session's worktree path
+// Path format: {DUEL_WORKTREE_BASE}/{duelId}/{slot}/...
+export function getDuelSlot(sessionID: string): number | undefined {
+  const wt = duelWorktrees.get(sessionID)
+  if (!wt) return undefined
+  const afterBase = wt.slice(DUEL_WORKTREE_BASE.length + 1) // "{duelId}/{slot}/..."
+  const slot = afterBase.split("/")[1]
+  return slot !== undefined ? parseInt(slot, 10) : undefined
 }
 
 export async function createDuelWorktrees(duelId: string, repoPath: string, slotCount: number = 2): Promise<string[]> {
@@ -91,10 +105,12 @@ async function doCreateWorktrees(duelId: string, repoPath: string, paths: string
   log.info("wt_latency: after stale cleanup", { ts: Date.now(), duelId })
 
   // Log source directory contents before cloning
-  log.info("wt_latency: before source dump", { ts: Date.now(), duelId })
-  const sourceDump = await $`find ${repoPath} -maxdepth 2 -type f -not -path '*/\.git/*' -exec sh -c 'echo "=== {} ===" && cat "{}"' \;`.cwd(repoPath).quiet().text()
-  log.info("wt_latency: after source dump", { ts: Date.now(), duelId })
-  log.info("createDuelWorktrees: source directory contents", { duelId, repoPath, dump: sourceDump.trim() })
+  if (LOG_WORKTREE_DUMPS) {
+    log.info("wt_latency: before source dump", { ts: Date.now(), duelId })
+    const sourceDump = await $`find ${repoPath} -maxdepth 2 -type f -not -path '*/\.git/*' -exec sh -c 'echo "=== {} ===" && cat "{}"' \;`.cwd(repoPath).quiet().text()
+    log.info("wt_latency: after source dump", { ts: Date.now(), duelId })
+    log.info("createDuelWorktrees: source directory contents", { duelId, repoPath, dump: sourceDump.trim() })
+  }
 
   // Create all worktrees from HEAD in parallel
   log.info("wt_latency: before git worktree add all", { ts: Date.now(), duelId })
@@ -132,9 +148,11 @@ async function doCreateWorktrees(duelId: string, repoPath: string, paths: string
   }
   log.info("wt_latency: after file overlay loop", { ts: Date.now(), duelId })
 
-  for (let i = 0; i < paths.length; i++) {
-    const dump = await $`find ${paths[i]} -maxdepth 2 -type f -not -path '*/\.git/*' -exec sh -c 'echo "=== {} ===" && cat "{}"' \;`.quiet().text()
-    log.info(`createDuelWorktrees: slot ${i} worktree created`, { duelId, slot: i, path: paths[i], dirtyCount: dirtyFiles.length, dump: dump.trim() })
+  if (LOG_WORKTREE_DUMPS) {
+    for (let i = 0; i < paths.length; i++) {
+      const dump = await $`find ${paths[i]} -maxdepth 2 -type f -not -path '*/\.git/*' -exec sh -c 'echo "=== {} ===" && cat "{}"' \;`.quiet().text()
+      log.info(`createDuelWorktrees: slot ${i} worktree created`, { duelId, slot: i, path: paths[i], dirtyCount: dirtyFiles.length, dump: dump.trim() })
+    }
   }
 
   createdWorktrees.add(duelId)

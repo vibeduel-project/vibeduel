@@ -15,7 +15,7 @@ import { FileTime } from "../file/time"
 import { Filesystem } from "../util/filesystem"
 import { Instance } from "../project/instance"
 import { Snapshot } from "@/snapshot"
-import { getDuelWorktree } from "@/duel"
+import { getDuelWorktree, getDuelSlot, LOG_DUEL_TOOL_OPS } from "@/duel"
 import { Log } from "@/util/log"
 
 const log = Log.create({ service: "duel.edit" })
@@ -54,6 +54,10 @@ export const EditTool = Tool.define("edit", {
         filePath = path.join(duelWorktree, relative)
         log.info("redirecting edit to worktree", { sessionID: ctx.sessionID, displayPath, worktreePath: filePath, relative })
       }
+    }
+
+    if (duelWorktree && LOG_DUEL_TOOL_OPS) {
+      log.info("duel edit", { slot: getDuelSlot(ctx.sessionID), worktree: duelWorktree, filePath })
     }
 
     if (!Filesystem.contains(Instance.directory, filePath) && !duelWorktree) {

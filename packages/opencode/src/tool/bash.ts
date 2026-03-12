@@ -9,7 +9,7 @@ import { Language } from "web-tree-sitter"
 
 import { $ } from "bun"
 import { Filesystem } from "@/util/filesystem"
-import { getDuelWorktree } from "@/duel"
+import { getDuel, getDuelWorktree, getDuelSlot, LOG_DUEL_TOOL_OPS } from "@/duel"
 import { fileURLToPath } from "url"
 import { Flag } from "@/flag/flag.ts"
 import { Shell } from "@/shell/shell"
@@ -71,9 +71,17 @@ export const BashTool = Tool.define("bash", async () => {
           "Clear, concise description of what this command does in 5-10 words. Examples:\nInput: ls\nOutput: Lists files in current directory\n\nInput: git status\nOutput: Shows working tree status\n\nInput: npm install\nOutput: Installs package dependencies\n\nInput: mkdir foo\nOutput: Creates directory 'foo'",
         ),
     }),
+    // NOTE: params.command (and all args) are already rewritten by prompt.ts ~L712-719
+    // (Instance.directory → worktree path) before this function is called.
     async execute(params, ctx) {
       const duelWorktree = getDuelWorktree(ctx.sessionID)
-      const cwd = duelWorktree || params.workdir || Instance.directory
+      if (getDuel(ctx.sessionID) && !duelWorktree) {
+        throw new Error(`Duel session ${ctx.sessionID} has no worktree — refusing to run bash in the real repo`)
+      }
+      const cwd = getDuel(ctx.sessionID) ? duelWorktree! : (params.workdir || Instance.directory)
+      if (duelWorktree && LOG_DUEL_TOOL_OPS) {
+        log.info("duel bash", { slot: getDuelSlot(ctx.sessionID), worktree: duelWorktree, command: params.command.slice(0, 120), cwd, workdir: params.workdir, instanceDir: Instance.directory })
+      }
       if (params.timeout !== undefined && params.timeout < 0) {
         throw new Error(`Invalid timeout value: ${params.timeout}. Timeout must be a positive number.`)
       }

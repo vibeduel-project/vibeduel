@@ -10,7 +10,7 @@ import { FileTime } from "../file/time"
 import { Filesystem } from "../util/filesystem"
 import { Instance } from "../project/instance"
 import { trimDiff } from "./edit"
-import { getDuelWorktree } from "@/duel"
+import { getDuelWorktree, getDuelSlot, LOG_DUEL_TOOL_OPS } from "@/duel"
 import { Log } from "@/util/log"
 
 const log = Log.create({ service: "duel.write" })
@@ -42,6 +42,10 @@ export const WriteTool = Tool.define("write", {
         filepath = path.join(duelWorktree, relative)
         log.info("redirecting write to worktree", { sessionID: ctx.sessionID, displayPath, worktreePath: filepath, relative })
       }
+    }
+
+    if (duelWorktree && LOG_DUEL_TOOL_OPS) {
+      log.info("duel write", { slot: getDuelSlot(ctx.sessionID), worktree: duelWorktree, filePath: filepath })
     }
 
     const file = Bun.file(filepath)

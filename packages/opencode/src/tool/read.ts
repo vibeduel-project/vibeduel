@@ -7,7 +7,10 @@ import { FileTime } from "../file/time"
 import DESCRIPTION from "./read.txt"
 import { Filesystem } from "../util/filesystem"
 import { Instance } from "../project/instance"
-import { getDuelWorktree } from "@/duel"
+import { getDuelWorktree, getDuelSlot, LOG_DUEL_TOOL_OPS } from "@/duel"
+import { Log } from "@/util/log"
+
+const log = Log.create({ service: "duel.read" })
 import { Identifier } from "../id/id"
 import { iife } from "@/util/iife"
 
@@ -27,6 +30,9 @@ export const ReadTool = Tool.define("read", {
       filepath = path.join(process.cwd(), filepath)
     }
     const duelWorktree = getDuelWorktree(ctx.sessionID)
+    if (duelWorktree && LOG_DUEL_TOOL_OPS) {
+      log.info("duel read", { slot: getDuelSlot(ctx.sessionID), worktree: duelWorktree, filePath: filepath })
+    }
     const title = path.relative(duelWorktree || Instance.worktree, filepath)
     if (!duelWorktree && !ctx.extra?.["bypassCwdCheck"] && !Filesystem.contains(Instance.directory, filepath)) {
       const parentDir = path.dirname(filepath)
