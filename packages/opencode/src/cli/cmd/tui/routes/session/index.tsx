@@ -461,15 +461,7 @@ export function Session() {
   })
 
   const promptPermissions = createMemo(() => {
-    const s = promptSession()
-    if (!s) return []
-    if (s.parentID) return sync.data.permission[promptSessionID()] ?? []
-    const parentID = s.parentID ?? s.id
-    const opponentIDs = new Set(route.opponentSessionIDs ?? [])
-    const children = sync.data.session
-      .filter((x) => (x.parentID === parentID || x.id === parentID) && !opponentIDs.has(x.id))
-      .toSorted((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
-    return children.flatMap((x) => sync.data.permission[x.id] ?? [])
+    return sync.data.permission[promptSessionID()] ?? []
   })
 
   const showPrompt = createMemo(() => {
@@ -1553,10 +1545,7 @@ function SessionPane(props: {
   })
   const messages = createMemo(() => sync.data.message[props.sessionID] ?? [])
   const permissions = createMemo(() => {
-    const s = session()
-    if (!s) return []
-    if (s.parentID) return sync.data.permission[props.sessionID] ?? []
-    return children().flatMap((x) => sync.data.permission[x.id] ?? [])
+    return sync.data.permission[props.sessionID] ?? []
   })
 
   const pending = createMemo(() => {
