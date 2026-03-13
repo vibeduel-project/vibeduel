@@ -24,7 +24,7 @@ import { Clipboard } from "../../util/clipboard"
 import type { FilePart } from "@opencode-ai/sdk/v2"
 import { TuiEvent } from "../../event"
 import { iife } from "@/util/iife"
-import { generateDuelId } from "@/duel"
+import { generateDuelRoundId } from "@/duel"
 import { getSessionTrackingNumber } from "@/session-tracking"
 
 const duelLog = Log.create({ service: "duel" })
@@ -50,8 +50,8 @@ export type PromptProps = {
   // When true, a duel is active and the user must vote before toggling duel mode
   awaitingVote?: boolean
   // Existing duel session ID for follow-up messages (reuses the round's duel ID)
-  duelSessionId?: string
-  onSubmit?: (sessionID: string, prompt: PromptInfo, duelSessionId?: string) => void
+  duelRoundId?: string
+  onSubmit?: (sessionID: string, prompt: PromptInfo, duelRoundId?: string) => void
   onSwitchMode?: () => void
   ref?: (ref: PromptRef) => void
   hint?: JSX.Element
@@ -728,7 +728,7 @@ export function Prompt(props: PromptProps) {
     const currentMode = store.mode
     const variant = local.model.variant.current()
 
-    const duelId = props.compareMode ? generateDuelId() : props.duelSessionId
+    const duelRoundId = props.compareMode ? generateDuelRoundId() : props.duelRoundId
 
     if (store.mode === "shell") {
       sdk.client.session.shell({
@@ -779,15 +779,15 @@ export function Prompt(props: PromptProps) {
       }
 
       if (props.skipAutoSend) {
-        duelLog.info("prompt: skipAutoSend=true, deferring send to onSubmit", { sessionID, duelId })
+        duelLog.info("prompt: skipAutoSend=true, deferring send to onSubmit", { sessionID, duelRoundId })
       } else if (props.compareMode) {
         const slotCount = getDuelCount()
-        duelLog.info("duel slot 0 request sent", { sessionID, duelId, slotCount, ts: Date.now() })
+        duelLog.info("duel slot 0 request sent", { sessionID, duelRoundId, slotCount, ts: Date.now() })
         sdk.client.session.prompt({
           sessionID,
           messageID,
           ...payloadProto,
-          duelSessionId: duelId,
+          duelRoundId: duelRoundId,
           duelSlot: 0,
           duelSlotCount: slotCount,
         })
@@ -797,7 +797,7 @@ export function Prompt(props: PromptProps) {
           sessionID,
           messageID,
           ...payloadProto,
-          ...(duelId ? { duelSessionId: duelId } : {}),
+          ...(duelRoundId ? { duelRoundId: duelRoundId } : {}),
         })
         Log.Default.info("latency: after SDK call", { timestamp: Date.now(), sessionID })
       }
@@ -806,12 +806,12 @@ export function Prompt(props: PromptProps) {
         if (props.compareMode) {
           for (let i = 0; i < props.broadcastSessionIDs.length; i++) {
             const targetID = props.broadcastSessionIDs[i]
-            duelLog.info("duel slot request sent", { targetID, duelId, slot: i + 1, ts: Date.now() })
+            duelLog.info("duel slot request sent", { targetID, duelRoundId, slot: i + 1, ts: Date.now() })
             sdk.client.session.prompt({
               sessionID: targetID,
               messageID: Identifier.ascending("message"),
               ...payloadProto,
-              duelSessionId: duelId,
+              duelRoundId: duelRoundId,
               duelSlot: i + 1,
               duelSlotCount: getDuelCount(),
             })
@@ -907,10 +907,10 @@ export function Prompt(props: PromptProps) {
       duelLog.info("prompt: calling onSubmit (messages already sent above)", {
         sessionID,
         broadcastSessionIDs: props.broadcastSessionIDs,
-        duelId,
+        duelRoundId,
         compareMode: props.compareMode,
       })
-      props.onSubmit(sessionID, promptInfo, duelId)
+      props.onSubmit(sessionID, promptInfo, duelRoundId)
       input.clear()
       return
     }

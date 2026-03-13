@@ -50,10 +50,10 @@ export namespace SessionProcessor {
           try {
             let currentText: MessageV2.TextPart | undefined
             let reasoningMap: Record<string, MessageV2.ReasoningPart> = {}
-            const duelSessionId = getDuel(input.sessionID)
-            if (duelSessionId) {
-              log.info("injecting duel session", { sessionID: input.sessionID, duelSessionId })
-              streamInput.duelSessionId = duelSessionId
+            const duelRoundId = getDuel(input.sessionID)
+            if (duelRoundId) {
+              log.info("injecting duel session", { sessionID: input.sessionID, duelRoundId })
+              streamInput.duelRoundId = duelRoundId
             }
             const streamStartTime = Date.now()
             let ttftLogged = false
@@ -76,7 +76,7 @@ export namespace SessionProcessor {
                       streamStartTimestamp: streamStartTime,
                       firstTokenTimestamp: Date.now(),
                       type: "reasoning",
-                      duel: !!duelSessionId,
+                      duel: !!duelRoundId,
                     })
                   }
                   if (value.id in reasoningMap) {
@@ -329,7 +329,7 @@ export namespace SessionProcessor {
                       streamStartTimestamp: streamStartTime,
                       firstTokenTimestamp: Date.now(),
                       type: "text",
-                      duel: !!duelSessionId,
+                      duel: !!duelRoundId,
                     })
                   }
                   if (currentText) {

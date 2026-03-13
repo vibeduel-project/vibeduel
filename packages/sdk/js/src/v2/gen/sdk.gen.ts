@@ -1234,7 +1234,7 @@ export class Session extends HeyApiClient {
       }
       system?: string
       variant?: string
-      duelSessionId?: string
+      duelRoundId?: string
       duelSlot?: number
       duelSlotCount?: number
       sessionTrackingNumber?: string
@@ -1256,7 +1256,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "tools" },
             { in: "body", key: "system" },
             { in: "body", key: "variant" },
-            { in: "body", key: "duelSessionId" },
+            { in: "body", key: "duelRoundId" },
             { in: "body", key: "duelSlot" },
             { in: "body", key: "duelSlotCount" },
             { in: "body", key: "sessionTrackingNumber" },
@@ -1330,7 +1330,7 @@ export class Session extends HeyApiClient {
       }
       system?: string
       variant?: string
-      duelSessionId?: string
+      duelRoundId?: string
       duelSlot?: number
       duelSlotCount?: number
       sessionTrackingNumber?: string
@@ -1352,7 +1352,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "tools" },
             { in: "body", key: "system" },
             { in: "body", key: "variant" },
-            { in: "body", key: "duelSessionId" },
+            { in: "body", key: "duelRoundId" },
             { in: "body", key: "duelSlot" },
             { in: "body", key: "duelSlotCount" },
             { in: "body", key: "sessionTrackingNumber" },

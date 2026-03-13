@@ -1049,9 +1049,9 @@ export namespace Provider {
           opts.signal = combined
         }
 
-        // Duel mode: if x-duel-session-id header is present, rewrite body
+        // Duel mode: if x-duel-round-id header is present, rewrite body
         const headers = opts.headers as Record<string, string> | undefined
-        const duelId = headers?.["x-duel-session-id"]
+        const duelRoundId = headers?.["x-duel-round-id"]
         if (opts.body && typeof opts.body === "string" && url.includes("/chat/completions")) {
           const body = JSON.parse(opts.body)
 
@@ -1061,11 +1061,11 @@ export namespace Provider {
             body.session_tracking_number = trackingNumber
           }
 
-          if (duelId) {
+          if (duelRoundId) {
             const originalModel = body.model
             body.model = "duel"
-            body.session_id = duelId
-            log.info("Duel fetch rewrite", { duelId, originalModel, url })
+            body.duel_round_id = duelRoundId
+            log.info("Duel fetch rewrite", { duelRoundId, originalModel, url })
           } else if (body.model === "duel") {
             // Non-duel request (title gen, summary, etc.) using the "duel" model name - swap to a real model
             const msgs = body.messages || []

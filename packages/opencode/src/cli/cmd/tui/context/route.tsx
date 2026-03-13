@@ -12,7 +12,7 @@ export type SessionRoute = {
   sessionID: string
   opponentSessionIDs?: string[]
   initialPrompt?: PromptInfo
-  duelSessionId?: string
+  duelRoundId?: string
 }
 
 export type Route = HomeRoute | SessionRoute
@@ -40,7 +40,7 @@ export const { use: useRoute, provider: RouteProvider } = createSimpleContext({
             sessionID: route.sessionID,
             opponentSessionIDs: route.opponentSessionIDs ?? undefined,
             initialPrompt: route.initialPrompt,
-            duelSessionId: route.duelSessionId,
+            duelRoundId: route.duelRoundId,
           } as any)
           return
         }

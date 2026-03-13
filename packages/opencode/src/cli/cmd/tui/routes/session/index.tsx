@@ -197,13 +197,13 @@ export function Session() {
   duelLog.info("session mount", {
     isSplit: initialAwaitingVote,
     awaitingVoteInitial: initialAwaitingVote,
-    duelSessionId: route.duelSessionId,
+    duelRoundId: route.duelRoundId,
     sessionIDs: allSessionIDs(),
   })
   const [awaitingVote, setAwaitingVote] = createSignal(initialAwaitingVote)
   // Track the duel session ID for voting. On mount (first round from home), read from route.
   // On subsequent rounds, captured from Prompt's onSubmit callback.
-  const [currentDuelId, setCurrentDuelId] = createSignal<string | undefined>(route.duelSessionId)
+  const [currentDuelRoundId, setCurrentDuelRoundId] = createSignal<string | undefined>(route.duelRoundId)
   const [lastChosenSessionID, setLastChosenSessionID] = createSignal<string | undefined>(undefined)
   // Deferred fork: store which slot won so the fork happens on next message submit, not immediately on vote
   const [pendingForkWinner, setPendingForkWinner] = createSignal<number | undefined>(undefined)
@@ -593,17 +593,17 @@ export function Session() {
     if (previewInFlight()) return
     if (previewedSlot() === slot) return
     setPreviewInFlight(true)
-    const duelId = currentDuelId()
-    duelLog.info("handlePreview", { slot, duelId, previousPreview: previewedSlot() })
+    const duelRoundId = currentDuelRoundId()
+    duelLog.info("handlePreview", { slot, duelRoundId, previousPreview: previewedSlot() })
 
-    if (duelId) {
+    if (duelRoundId) {
       // Snapshot original files on first preview (lazy — worktrees are guaranteed to exist by now)
-      await snapshotOriginalFiles(duelId, process.cwd(), allSessionIDs().length)
+      await snapshotOriginalFiles(duelRoundId, process.cwd(), allSessionIDs().length)
       // Revert any existing preview before applying the new one
       if (previewedSlot() !== null) {
-        await revertToOriginal(duelId, process.cwd())
+        await revertToOriginal(duelRoundId, process.cwd())
       }
-      await previewWorktree(duelId, slot, process.cwd())
+      await previewWorktree(duelRoundId, slot, process.cwd())
     }
 
     setPreviewedSlot(slot)
@@ -618,11 +618,11 @@ export function Session() {
     if (previewInFlight()) return
     if (previewedSlot() === null) return
     setPreviewInFlight(true)
-    const duelId = currentDuelId()
-    duelLog.info("handleUndo", { duelId, previousPreview: previewedSlot() })
+    const duelRoundId = currentDuelRoundId()
+    duelLog.info("handleUndo", { duelRoundId, previousPreview: previewedSlot() })
 
-    if (duelId) {
-      await revertToOriginal(duelId, process.cwd())
+    if (duelRoundId) {
+      await revertToOriginal(duelRoundId, process.cwd())
     }
 
     setPreviewedSlot(null)
@@ -637,15 +637,15 @@ export function Session() {
     if (voteInFlight()) return
     setVoteInFlight(true)
     const winningID = allSessionIDs()[slot]
-    const duelId = currentDuelId()
+    const duelRoundId = currentDuelRoundId()
     duelLog.info("finalizeVote", {
       slot,
-      duelSessionId: duelId,
+      duelRoundId: duelRoundId,
       winningSessionID: winningID,
     })
 
     // Submit vote to backend
-    if (duelId) {
+    if (duelRoundId) {
       const baseURL = process.env["VIBEDUEL_BASE_URL"] ?? "https://api.vibeduel.ai/v1"
       const apiKey = process.env["VIBEDUEL_API_KEY"]
       const res = await fetch(`${baseURL.replace(/\/v1$/, "")}/v1/duel/vote`, {
@@ -654,11 +654,11 @@ export function Session() {
           "Content-Type": "application/json",
           ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
         },
-        body: JSON.stringify({ duel_session_id: duelId, winner_opencode_session: winningID }),
+        body: JSON.stringify({ duel_round_id: duelRoundId, winner_opencode_session: winningID }),
       })
       const result = await res.json()
       duelLog.info("vote submitted", {
-        duelSessionId: duelId,
+        duelRoundId: duelRoundId,
         winnerModel: result.winner,
         models: result.models,
         modelKeys: result.models ? Object.keys(result.models) : [],
@@ -673,7 +673,7 @@ export function Session() {
       }
       setModelReveal(reveal)
       // Clean up snapshot — the preview is now permanent
-      clearSnapshot(duelId)
+      clearSnapshot(duelRoundId)
     } else {
       duelLog.warn("no duel session ID available, vote not submitted")
     }
@@ -778,11 +778,11 @@ export function Session() {
 
     // Phase 1: Cleanup (if leaving a duel state)
     if (from !== 'single') {
-      const duelId = currentDuelId()
-      if (previewedSlot() !== null && duelId) {
-        await revertToOriginal(duelId, process.cwd())
+      const duelRoundId = currentDuelRoundId()
+      if (previewedSlot() !== null && duelRoundId) {
+        await revertToOriginal(duelRoundId, process.cwd())
       }
-      if (duelId) clearSnapshot(duelId)
+      if (duelRoundId) clearSnapshot(duelRoundId)
       setModelReveal(undefined)
       setSlotColors([])
       setPreviewedSlot(null)
@@ -905,11 +905,11 @@ export function Session() {
     setAutoDuelDone(false)
 
     // Inline cleanup (model already changed externally, skip Phase 4 of switchMode)
-    const duelId = currentDuelId()
-    if (previewedSlot() !== null && duelId) {
-      void revertToOriginal(duelId, process.cwd())
+    const duelRoundId = currentDuelRoundId()
+    if (previewedSlot() !== null && duelRoundId) {
+      void revertToOriginal(duelRoundId, process.cwd())
     }
-    if (duelId) clearSnapshot(duelId)
+    if (duelRoundId) clearSnapshot(duelRoundId)
 
     const selectedID = pendingForkIDs()?.primaryID ?? lastChosenSessionID() ?? route.sessionID
     setDuelCountSignal(2)
@@ -1217,9 +1217,9 @@ export function Session() {
                     awaitingVote={awaitingVote()}
                     skipAutoSend={pendingForkWinner() !== undefined || pendingDuelEntry()}
                     onSwitchMode={() => switchMode()}
-                    duelSessionId={
+                    duelRoundId={
                       pendingForkWinner() !== undefined || awaitingVote()
-                        ? currentDuelId()
+                        ? currentDuelRoundId()
                         : undefined
                     }
                     disabled={false}
@@ -1229,7 +1229,7 @@ export function Session() {
                       promptRef.set(r)
                     }}
                     sessionID={allViewPrimarySessionID()!}
-                      onSubmit={async (_sessionID, promptInfo, duelSessionId) => {
+                      onSubmit={async (_sessionID, promptInfo, duelRoundId) => {
                         duelLog.info("allView onSubmit entry", {
                           sessionID: _sessionID,
                           selectedSlots: [...selectedSlots()],
@@ -1249,7 +1249,7 @@ export function Session() {
                         if (pendingDuelEntry() && pendingForkIDs()) {
                           const { primaryID, opponentIDs: newOpponentIDs } = pendingForkIDs()!
                           duelLog.info("allView duel-entry: starting", {
-                            primaryID, newOpponentIDs, duelSessionId,
+                            primaryID, newOpponentIDs, duelRoundId,
                             maximizedSlot: maximizedSlot(),
                             maximizeProgress: maximizeProgress(),
                           })
@@ -1266,11 +1266,11 @@ export function Session() {
                             variant: local.model.variant.current(),
                             sessionTrackingNumber: getSessionTrackingNumber(),
                             parts,
-                            duelSessionId,
+                            duelRoundId,
                           }
 
                           // Send prompts to primary + all opponents
-                          duelLog.info("allView duel-entry: sending prompt to primary", { sessionID: primaryID, duelSessionId, duelSlot: 0, duelSlotCount: forkDuelCount })
+                          duelLog.info("allView duel-entry: sending prompt to primary", { sessionID: primaryID, duelRoundId, duelSlot: 0, duelSlotCount: forkDuelCount })
                           sdk.client.session.prompt({
                             sessionID: primaryID,
                             messageID: Identifier.ascending("message"),
@@ -1279,7 +1279,7 @@ export function Session() {
                             duelSlotCount: forkDuelCount,
                           })
                           for (let i = 0; i < newOpponentIDs.length; i++) {
-                            duelLog.info("allView duel-entry: sending prompt to opponent", { sessionID: newOpponentIDs[i], duelSessionId, duelSlot: i + 1, duelSlotCount: forkDuelCount })
+                            duelLog.info("allView duel-entry: sending prompt to opponent", { sessionID: newOpponentIDs[i], duelRoundId, duelSlot: i + 1, duelSlotCount: forkDuelCount })
                             sdk.client.session.prompt({
                               sessionID: newOpponentIDs[i],
                               messageID: Identifier.ascending("message"),
@@ -1291,14 +1291,14 @@ export function Session() {
 
                           logRoundStart({
                             sessionTrackingNumber: getSessionTrackingNumber(),
-                            sessionId: duelSessionId!,
+                            duelRoundId: duelRoundId!,
                             slots: [primaryID, ...newOpponentIDs],
                           })
 
                           // Reset pending state
                           setPendingDuelEntry(false)
                           setPendingForkIDs(undefined)
-                          setCurrentDuelId(duelSessionId)
+                          setCurrentDuelRoundId(duelRoundId)
 
                           // Navigate FIRST so isSplit() becomes true — then set awaitingVote.
                           // If we set awaitingVote before navigate, the not-split cleanup effect
@@ -1308,14 +1308,14 @@ export function Session() {
                             maximizeProgress: maximizeProgress(),
                             primaryID,
                             newOpponentIDs,
-                            duelSessionId,
+                            duelRoundId,
                           })
                           logLayoutPositions("onSubmit:duel-entry:before-navigate")
                           navigate({
                             type: "session",
                             sessionID: primaryID,
                             opponentSessionIDs: newOpponentIDs,
-                            duelSessionId: duelSessionId,
+                            duelRoundId: duelRoundId,
                           })
                           setAwaitingVote(true)
                           logLayoutPositions("onSubmit:duel-entry:after-navigate")
@@ -1336,7 +1336,7 @@ export function Session() {
                         // Fork-on-next-prompt: use pre-created forks from finalizeVote
                         if (winnerSlot !== undefined && pendingForkIDs()) {
                           const { primaryID, opponentIDs: newOpponentIDs } = pendingForkIDs()!
-                          duelLog.info("allView fork-on-next-prompt", { winnerSlot, primaryID, newOpponentIDs, duelSessionId })
+                          duelLog.info("allView fork-on-next-prompt", { winnerSlot, primaryID, newOpponentIDs, duelRoundId })
 
                           const nonTextParts = promptInfo.parts.filter((part) => part.type !== "text")
                           const parts = [
@@ -1350,10 +1350,10 @@ export function Session() {
                             variant: local.model.variant.current(),
                             sessionTrackingNumber: getSessionTrackingNumber(),
                             parts,
-                            duelSessionId,
+                            duelRoundId,
                           }
 
-                          duelLog.info("allView sending prompt to winner", { sessionID: primaryID, duelSessionId, duelSlot: 0, duelSlotCount: forkDuelCount })
+                          duelLog.info("allView sending prompt to winner", { sessionID: primaryID, duelRoundId, duelSlot: 0, duelSlotCount: forkDuelCount })
                           sdk.client.session.prompt({
                             sessionID: primaryID,
                             messageID: Identifier.ascending("message"),
@@ -1362,7 +1362,7 @@ export function Session() {
                             duelSlotCount: forkDuelCount,
                           })
                           for (let i = 0; i < newOpponentIDs.length; i++) {
-                            duelLog.info("allView sending prompt to fork", { sessionID: newOpponentIDs[i], duelSessionId, duelSlot: i + 1, duelSlotCount: forkDuelCount })
+                            duelLog.info("allView sending prompt to fork", { sessionID: newOpponentIDs[i], duelRoundId, duelSlot: i + 1, duelSlotCount: forkDuelCount })
                             sdk.client.session.prompt({
                               sessionID: newOpponentIDs[i],
                               messageID: Identifier.ascending("message"),
@@ -1374,7 +1374,7 @@ export function Session() {
 
                           logRoundStart({
                             sessionTrackingNumber: getSessionTrackingNumber(),
-                            sessionId: duelSessionId!,
+                            duelRoundId: duelRoundId!,
                             slots: [primaryID, ...newOpponentIDs],
                           })
 
@@ -1382,7 +1382,7 @@ export function Session() {
                           setModelReveal(undefined)
                           setSlotColors([])
                           setPreviewedSlot(null)
-                          setCurrentDuelId(duelSessionId)
+                          setCurrentDuelRoundId(duelRoundId)
                           setAwaitingVote(true)
                           setPendingForkWinner(undefined)
                           setPendingForkIDs(undefined)
@@ -1394,7 +1394,7 @@ export function Session() {
                             primaryID,
                             newOpponentIDs,
                             awaitingVote: true,
-                            duelSessionId,
+                            duelRoundId,
                           })
                           logLayoutPositions("onSubmit:fork-next:before-navigate")
                           if (maximizedSlot() !== null) {
@@ -1412,7 +1412,7 @@ export function Session() {
                                 type: "session",
                                 sessionID: primaryID,
                                 opponentSessionIDs: newOpponentIDs,
-                                duelSessionId: duelSessionId,
+                                duelRoundId: duelRoundId,
                               })
                               logLayoutPositions("onSubmit:fork-next:after-delayed-navigate")
                             }, MAXIMIZE_ANIM_DURATION + 50)
@@ -1421,7 +1421,7 @@ export function Session() {
                               type: "session",
                               sessionID: primaryID,
                               opponentSessionIDs: newOpponentIDs,
-                              duelSessionId: duelSessionId,
+                              duelRoundId: duelRoundId,
                             })
                             logLayoutPositions("onSubmit:fork-next:after-navigate")
                           }
@@ -1449,7 +1449,7 @@ export function Session() {
                               model: local.model.current()!,
                               variant: local.model.variant.current(),
                               sessionTrackingNumber: getSessionTrackingNumber(),
-                              ...(currentDuelId() ? { duelSessionId: currentDuelId() } : {}),
+                              ...(currentDuelRoundId() ? { duelRoundId: currentDuelRoundId() } : {}),
                               parts: [
                                 {
                                   id: Identifier.ascending("part"),

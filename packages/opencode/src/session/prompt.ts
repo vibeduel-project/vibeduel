@@ -102,7 +102,7 @@ export namespace SessionPrompt {
       ),
     system: z.string().optional(),
     variant: z.string().optional(),
-    duelSessionId: z.string().optional(),
+    duelRoundId: z.string().optional(),
     duelSlot: z.number().int().min(0).optional(),
     duelSlotCount: z.number().int().min(2).optional(),
     sessionTrackingNumber: z.string().optional(),
@@ -194,13 +194,13 @@ export namespace SessionPrompt {
       setSessionTrackingNumber(input.sessionTrackingNumber)
     }
 
-    if (input.duelSessionId) {
-      log.info("duel mode active", { sessionID: input.sessionID, duelSessionId: input.duelSessionId })
-      setDuel(input.sessionID, input.duelSessionId)
+    if (input.duelRoundId) {
+      log.info("duel mode active", { sessionID: input.sessionID, duelRoundId: input.duelRoundId })
+      setDuel(input.sessionID, input.duelRoundId)
 
       if (input.duelSlot !== undefined) {
         log.info("latency: before createDuelWorktrees", { timestamp: Date.now(), sessionID: input.sessionID, duelSlot: input.duelSlot })
-        const worktrees = await createDuelWorktrees(input.duelSessionId, Instance.directory, input.duelSlotCount ?? 2)
+        const worktrees = await createDuelWorktrees(input.duelRoundId, Instance.directory, input.duelSlotCount ?? 2)
         log.info("latency: after createDuelWorktrees", { timestamp: Date.now(), sessionID: input.sessionID })
         const worktreePath = worktrees[input.duelSlot]
         log.info("latency: after worktreePath lookup", { timestamp: Date.now(), sessionID: input.sessionID, duelSlot: input.duelSlot, worktreePath })
@@ -213,7 +213,7 @@ export namespace SessionPrompt {
     try {
       return await loop(input.sessionID)
     } finally {
-      if (input.duelSessionId) {
+      if (input.duelRoundId) {
         clearDuel(input.sessionID)
         clearDuelWorktree(input.sessionID)
       }
@@ -733,9 +733,9 @@ export namespace SessionPrompt {
           try {
             result = await item.execute(args, ctx)
           } catch (e: any) {
-            const duelId = getDuel(ctx.sessionID)
-            if (duelId) {
-              log.error("duel tool error", { tool: item.id, slot: getDuelSlot(ctx.sessionID), sessionID: ctx.sessionID, duelId, worktree, args, error: e?.toString() })
+            const duelRoundId = getDuel(ctx.sessionID)
+            if (duelRoundId) {
+              log.error("duel tool error", { tool: item.id, slot: getDuelSlot(ctx.sessionID), sessionID: ctx.sessionID, duelRoundId, worktree, args, error: e?.toString() })
             }
             throw e
           }

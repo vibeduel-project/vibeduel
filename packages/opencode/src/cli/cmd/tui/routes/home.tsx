@@ -16,7 +16,7 @@ import { useCommandDialog } from "../component/dialog-command"
 import { useSDK } from "@tui/context/sdk"
 import { useLocal } from "../context/local"
 import { Identifier } from "@/id/id"
-import { generateDuelId, logRoundStart } from "@/duel"
+import { generateDuelRoundId, logRoundStart } from "@/duel"
 import { getSessionTrackingNumber } from "@/session-tracking"
 import { Log } from "@/util/log"
 
@@ -315,9 +315,9 @@ export function Home() {
             }}
             hint={Hint}
             compareMode={local.model.current()?.modelID === "duel"}
-            onSubmit={async (sessionID, promptInfo, duelSessionId) => {
-              duelLog.info("home onSubmit", { sessionID, duelSessionId, isDuel: !!duelSessionId })
-              if (duelSessionId) {
+            onSubmit={async (sessionID, promptInfo, duelRoundId) => {
+              duelLog.info("home onSubmit", { sessionID, duelRoundId, isDuel: !!duelRoundId })
+              if (duelRoundId) {
                 try {
                   // Create N-1 opponent sessions
                   const duelCount = getDuelCount()
@@ -330,7 +330,7 @@ export function Home() {
                   if (opponentIDs.length > 0) {
                     logRoundStart({
                       sessionTrackingNumber: getSessionTrackingNumber(),
-                      sessionId: duelSessionId,
+                      duelRoundId,
                       slots: [sessionID, ...opponentIDs],
                     })
                     const selectedModel = local.model.current()
@@ -355,7 +355,7 @@ export function Home() {
                             ...x,
                           })),
                         ],
-                        duelSessionId,
+                        duelRoundId,
                         duelSlot: i + 1,
                         duelSlotCount: duelCount,
                       })
@@ -365,7 +365,7 @@ export function Home() {
                       type: "session",
                       sessionID,
                       opponentSessionIDs: opponentIDs,
-                      duelSessionId,
+                      duelRoundId,
                     })
                     return
                   }
