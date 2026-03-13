@@ -330,7 +330,7 @@ export function Session() {
           clearInterval(timer)
           setMaximizedSlot(null)
           setMaximizeProgress(0)
-          setSelectedSlots(new Set())
+          setSelectedSlots(() => new Set())
           duelLog.info("maximize: minimize complete", {
             slot,
             maximizedSlot: null,
@@ -352,7 +352,7 @@ export function Session() {
       })
       setMaximizedSlot(slot)
       setMaximizeTarget(slot)
-      setSelectedSlots(new Set([slot]))
+      setSelectedSlots(() => new Set([slot]))
       const startTime = Date.now()
       const startProgress = maximizeProgress()
       const timer = setInterval(() => {
@@ -721,7 +721,7 @@ export function Session() {
     setPreviewedSlot(null)
     setAwaitingVote(false)
     setVoteInFlight(false)
-    setSelectedSlots(new Set())
+    setSelectedSlots(() => new Set())
 
     if (autoDuelPreviousModel) {
       const model = autoDuelPreviousModel
@@ -1246,7 +1246,6 @@ export function Session() {
                           maximizeProgress: maximizeProgress(),
                           isSplit: isSplit(),
                           allSessionIDs: allSessionIDs(),
-                          selectedSlots: [...selectedSlots()],
                           model: local.model.current()?.modelID,
                         })
 
