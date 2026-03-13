@@ -503,6 +503,8 @@ export function Session() {
     if (LOG_SLOT_MESSAGES) duelLog.info("slotMessages state", { slots: summary })
   })
 
+  // Show preview/undo buttons as soon as models are generating (worktrees exist)
+  const showPreviewButtons = createMemo(() => isSplit() && awaitingVote())
   // Show vote controls when all models are done and awaiting vote
   const showVoteControls = createMemo(() => isSplit() && awaitingVote() && allDone())
   // Disable prompt only while models are actively generating in duel mode
@@ -511,7 +513,7 @@ export function Session() {
   // Compute row heights for +4 maximize animation
   // All modes use a single row — row0Height is the full available height
   const row0Height = createMemo(() => {
-    const voteBarHeight = showVoteControls() ? 5 : 0
+    const voteBarHeight = showPreviewButtons() ? 5 : 0
     const promptBarHeight = 7
     const modelRevealH = (modelReveal() && !awaitingVote()) ? 2 : 0
     return dimensions().height - voteBarHeight - promptBarHeight - modelRevealH
@@ -968,28 +970,38 @@ export function Session() {
         >
           <text fg={previewedSlot() !== null ? theme.text : theme.textMuted}>Undo</text>
         </box>
-        <box
-          border={["left", "right", "top", "bottom"]}
-          borderColor={previewedSlot() !== null ? theme.success : theme.textMuted}
-          paddingLeft={1}
-          paddingRight={1}
-          onMouseUp={() => {
-            duelLog.info("submit clicked", { timestamp: Date.now(), previewedSlot: previewedSlot() })
-            finalizeVote()
-          }}
-        >
-          <text fg={previewedSlot() !== null ? theme.success : theme.textMuted}>Submit</text>
-        </box>
+        <Show when={allDone()}>
+          <box
+            border={["left", "right", "top", "bottom"]}
+            borderColor={previewedSlot() !== null ? theme.success : theme.textMuted}
+            paddingLeft={1}
+            paddingRight={1}
+            onMouseUp={() => {
+              duelLog.info("submit clicked", { timestamp: Date.now(), previewedSlot: previewedSlot() })
+              finalizeVote()
+            }}
+          >
+            <text fg={previewedSlot() !== null ? theme.success : theme.textMuted}>Submit</text>
+          </box>
+        </Show>
       </box>
     )
   }
 
   function VoteHint() {
+    const hint = () => {
+      if (previewedSlot() !== null) {
+        return allDone()
+          ? `previewing slot ${previewedSlot()} — click submit to vote`
+          : `previewing slot ${previewedSlot()} — waiting for models to finish`
+      }
+      return allDone()
+        ? "click a slot to preview, or type a follow-up"
+        : "click a slot to preview while models generate"
+    }
     return (
       <text fg={theme.textMuted}>
-        {previewedSlot() !== null
-          ? `previewing slot ${previewedSlot()} — click submit to vote`
-          : "click a slot to preview, or type a follow-up"}
+        {hint()}
       </text>
     )
   }
@@ -1192,7 +1204,7 @@ export function Session() {
                   </box>
                 </Show>
               </box>
-              <Show when={showVoteControls()}>
+              <Show when={showPreviewButtons()}>
                 <box ref={(r: any) => { voteControlsBoxRef = r }} flexShrink={0} flexDirection="column" alignItems="center" paddingTop={1} gap={0}>
                   <VoteButtons />
                   <VoteHint />
