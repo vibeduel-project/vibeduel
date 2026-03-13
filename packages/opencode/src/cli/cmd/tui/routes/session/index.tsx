@@ -330,7 +330,7 @@ export function Session() {
           clearInterval(timer)
           setMaximizedSlot(null)
           setMaximizeProgress(0)
-          setSelectedSlots(() => new Set())
+          setSelectedSlots(() => new Set<number>())
           duelLog.info("maximize: minimize complete", {
             slot,
             maximizedSlot: null,
@@ -721,7 +721,7 @@ export function Session() {
     setPreviewedSlot(null)
     setAwaitingVote(false)
     setVoteInFlight(false)
-    setSelectedSlots(() => new Set())
+    setSelectedSlots(() => new Set<number>())
 
     if (autoDuelPreviousModel) {
       const model = autoDuelPreviousModel
