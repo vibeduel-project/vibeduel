@@ -5,6 +5,7 @@ import { Instance } from "@/project/instance"
 import { InstanceBootstrap } from "@/project/bootstrap"
 import { Rpc } from "@/util/rpc"
 import { upgrade } from "@/cli/upgrade"
+import { cleanupAllWorktrees } from "@/duel"
 import type { BunWebSocketData } from "hono/bun"
 
 await Log.init({
@@ -53,6 +54,9 @@ export const rpc = {
   },
   async shutdown() {
     Log.Default.info("worker shutting down")
+    await cleanupAllWorktrees(process.cwd()).catch(e => {
+      Log.Default.error("worktree cleanup failed", { e: e instanceof Error ? e.message : e })
+    })
     await Instance.disposeAll()
     // TODO: this should be awaited, but ws connections are
     // causing this to hang, need to revisit this

@@ -97,6 +97,7 @@ async function doCreateWorktrees(duelRoundId: string, repoPath: string, paths: s
   if (await $`test -d ${baseDir}`.quiet().nothrow().then(r => r.exitCode === 0)) {
     log.info("createDuelWorktrees: cleaning up stale worktrees", { duelRoundId, baseDir })
     for (const p of paths) {
+      log.info("worktree removed (stale)", { duelRoundId, path: p })
       await $`git worktree remove ${p} --force`.cwd(repoPath).quiet().nothrow()
     }
     await $`rm -rf ${baseDir}`.quiet().nothrow()
@@ -115,7 +116,10 @@ async function doCreateWorktrees(duelRoundId: string, repoPath: string, paths: s
   // Create all worktrees from HEAD in parallel
   log.info("wt_latency: before git worktree add all", { ts: Date.now(), duelRoundId })
   await Promise.all(
-    paths.map(p => $`git worktree add ${p} HEAD --detach`.cwd(repoPath).quiet())
+    paths.map(async p => {
+      await $`git worktree add ${p} HEAD --detach`.cwd(repoPath).quiet()
+      log.info("worktree created", { duelRoundId, path: p })
+    })
   )
   log.info("wt_latency: after git worktree add all", { ts: Date.now(), duelRoundId })
 
@@ -191,6 +195,23 @@ export async function applyWinnerWorktree(duelRoundId: string, winnerSlot: numbe
   }
 
   log.info("applyWinnerWorktree: done", { duelRoundId, winnerSlot, filesCopied: changedFiles.length })
+
+  await cleanupRoundWorktrees(duelRoundId, repoPath)
+}
+
+export async function cleanupRoundWorktrees(duelRoundId: string, repoPath: string): Promise<void> {
+  const baseDir = `${DUEL_WORKTREE_BASE}/${duelRoundId}`
+  log.info("cleanupRoundWorktrees: removing worktrees", { duelRoundId, baseDir })
+  const entries = await $`ls ${baseDir}`.quiet().nothrow().text()
+  for (const slot of entries.trim().split("\n").filter(s => s.length > 0)) {
+    const wtPath = `${baseDir}/${slot}`
+    log.info("worktree removed (vote cleanup)", { duelRoundId, path: wtPath })
+    await $`git worktree remove ${wtPath} --force`.cwd(repoPath).quiet().nothrow()
+  }
+  await $`rm -rf ${baseDir}`.quiet().nothrow()
+  await $`git worktree prune`.cwd(repoPath).quiet().nothrow()
+  createdWorktrees.delete(duelRoundId)
+  log.info("cleanupRoundWorktrees: done", { duelRoundId })
 }
 
 // In-memory snapshots of original file contents before any preview is applied
@@ -279,6 +300,34 @@ export async function revertToOriginal(duelRoundId: string, repoPath: string): P
 export function clearSnapshot(duelRoundId: string): void {
   log.info("clearSnapshot", { duelRoundId })
   originalSnapshots.delete(duelRoundId)
+}
+
+// Remove all worktree directories on shutdown (cleans up orphans from any prior run)
+export async function cleanupAllWorktrees(repoPath: string): Promise<void> {
+  const baseExists = await $`test -d ${DUEL_WORKTREE_BASE}`.quiet().nothrow().then(r => r.exitCode === 0)
+  if (!baseExists) {
+    log.info("cleanupAllWorktrees: no worktree base dir, nothing to do")
+    return
+  }
+
+  const entries = await $`ls ${DUEL_WORKTREE_BASE}`.quiet().nothrow().text()
+  const dirs = entries.trim().split("\n").filter(s => s.length > 0)
+  log.info("cleanupAllWorktrees: cleaning up", { count: dirs.length, dirs })
+
+  for (const dir of dirs) {
+    const roundDir = `${DUEL_WORKTREE_BASE}/${dir}`
+    const slots = await $`ls ${roundDir}`.quiet().nothrow().text()
+    for (const slot of slots.trim().split("\n").filter(s => s.length > 0)) {
+      const wtPath = `${roundDir}/${slot}`
+      log.info("worktree removed (shutdown)", { path: wtPath })
+      await $`git worktree remove ${wtPath} --force`.cwd(repoPath).quiet().nothrow()
+    }
+    await $`rm -rf ${roundDir}`.quiet().nothrow()
+  }
+
+  await $`git worktree prune`.cwd(repoPath).quiet().nothrow()
+  createdWorktrees.clear()
+  log.info("cleanupAllWorktrees: done")
 }
 
 // Generate a duel session ID (called from TUI side)

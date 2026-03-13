@@ -44,7 +44,7 @@ import { SessionStatus } from "./status"
 import { LLM } from "./llm"
 import { iife } from "@/util/iife"
 import { Shell } from "@/shell/shell"
-import { setDuel, clearDuel, setDuelWorktree, clearDuelWorktree, createDuelWorktrees, getDuel, getDuelWorktree, getDuelSlot } from "@/duel"
+import { setDuel, setDuelWorktree, createDuelWorktrees, getDuel, getDuelWorktree, getDuelSlot } from "@/duel"
 import { setSessionTrackingNumber } from "@/session-tracking"
 
 // @ts-ignore
@@ -210,14 +210,7 @@ export namespace SessionPrompt {
     }
 
     log.info("latency: after prompt processing", { timestamp: Date.now(), sessionID: input.sessionID })
-    try {
-      return await loop(input.sessionID)
-    } finally {
-      if (input.duelRoundId) {
-        clearDuel(input.sessionID)
-        clearDuelWorktree(input.sessionID)
-      }
-    }
+    return await loop(input.sessionID)
   })
 
   export async function resolvePromptParts(template: string): Promise<PromptInput["parts"]> {

@@ -56,7 +56,7 @@ import { Identifier } from "@/id/id"
 function logToSlot(slot: number, text: string) {
   duelLog.info(text, { slot })
 }
-import { applyWinnerWorktree, snapshotOriginalFiles, previewWorktree, revertToOriginal, clearSnapshot, logRoundStart } from "@/duel"
+import { applyWinnerWorktree, snapshotOriginalFiles, previewWorktree, revertToOriginal, clearSnapshot, cleanupRoundWorktrees, clearDuel, clearDuelWorktree, logRoundStart } from "@/duel"
 import { setSessionTrackingNumber, getSessionTrackingNumber } from "@/session-tracking"
 import { TodoItem } from "../../component/todo-item"
 import { DialogMessage } from "./dialog-message"
@@ -672,8 +672,13 @@ export function Session() {
         reveal[sid] = cleanName(model as string)
       }
       setModelReveal(reveal)
-      // Clean up snapshot — the preview is now permanent
+      // Clean up snapshot, worktrees, and in-memory duel state — the preview is now permanent
       clearSnapshot(duelRoundId)
+      await cleanupRoundWorktrees(duelRoundId, process.cwd())
+      for (const sid of allSessionIDs()) {
+        clearDuel(sid)
+        clearDuelWorktree(sid)
+      }
     } else {
       duelLog.warn("no duel session ID available, vote not submitted")
     }
