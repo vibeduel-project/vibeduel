@@ -946,7 +946,7 @@ export function Session() {
           {(_, index) => (
             <box
               border={["left", "right", "top", "bottom"]}
-              borderColor={(slotColors()[index()] as string | undefined) ?? theme.border}
+              borderColor={previewedSlot() === index() ? "blue" : slotDone()[index()] ? "green" : "yellow"}
               paddingLeft={1}
               paddingRight={1}
               onMouseUp={() => {
@@ -954,7 +954,7 @@ export function Session() {
                 handlePreview(index())
               }}
             >
-              <text fg={(slotColors()[index()] as string | undefined) ?? theme.text}>Slot {index()}</text>
+              <text fg={previewedSlot() === index() ? "blue" : theme.text}>Slot {index()}</text>
             </box>
           )}
         </For>
@@ -1044,20 +1044,29 @@ export function Session() {
           <box flexDirection="column" flexGrow={1} ref={(r: any) => { gridContainerRef = r }} onMouseMove={(e: any) => setMousePos({ x: e.x, y: e.y })}>
               <box flexDirection="row" flexGrow={0} height={row0Height()} ref={(r: any) => { row0BoxRef = r }}>
                 <Show when={slot0Width() > 0}>
-                  <box ref={(r: any) => { slot0BoxRef = r }} width={slot0Width()} height="100%" border={allSessionIDs().length > 1 ? ["left", "right", "top", "bottom"] : undefined} borderColor={selectedSlots().has(0) ? theme.success : theme.border} overflow="hidden">
+                  <box ref={(r: any) => { slot0BoxRef = r }} width={slot0Width()} height="100%" border={allSessionIDs().length > 1 ? ["left", "right", "top", "bottom"] : undefined} borderColor={selectedSlots().has(0) ? theme.success : theme.border} overflow="hidden" onMouseUp={() => {
+                    if (allSessionIDs().length <= 1) return
+                    setSelectedSlots(prev => {
+                      const next = new Set(prev)
+                      if (next.has(0)) next.delete(0); else next.add(0)
+                      duelLog.info("slot clicked", { slot: 0, selected: [...next], selectedSessionIDs: [...next].map(s => allSessionIDs()[s]) })
+                      return next
+                    })
+                  }}>
                     <Show when={pendingForkWinner() === undefined && allSessionIDs().length > 1}>
                       <box position="absolute" top={0} right={0} zIndex={200} flexDirection="row">
                         <box
                           paddingLeft={1} paddingRight={1}
                           backgroundColor={theme.backgroundElement}
-                          onMouseUp={() => toggleMaximize(0)}
+                          onMouseUp={(e: any) => { e.stopPropagation(); toggleMaximize(0) }}
                         >
                           <text fg={theme.text}>{maximizedSlot() === 0 ? "▾" : "▸"}</text>
                         </box>
                         <box
                           paddingLeft={1} paddingRight={1}
                           backgroundColor={selectedSlots().has(0) ? theme.success : theme.backgroundElement}
-                          onMouseUp={() => {
+                          onMouseUp={(e: any) => {
+                            e.stopPropagation()
                             setSelectedSlots(prev => {
                               const next = new Set(prev)
                               if (next.has(0)) next.delete(0); else next.add(0)
@@ -1084,20 +1093,28 @@ export function Session() {
                   </box>
                 </Show>
                 <Show when={slot1Width() > 0 && allSessionIDs()[1]}>
-                  <box ref={(r: any) => { slot1BoxRef = r }} width={slot1Width()} height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(1) ? theme.success : theme.border} overflow="hidden">
+                  <box ref={(r: any) => { slot1BoxRef = r }} width={slot1Width()} height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(1) ? theme.success : theme.border} overflow="hidden" onMouseUp={() => {
+                    setSelectedSlots(prev => {
+                      const next = new Set(prev)
+                      if (next.has(1)) next.delete(1); else next.add(1)
+                      duelLog.info("slot clicked", { slot: 1, selected: [...next], selectedSessionIDs: [...next].map(s => allSessionIDs()[s]) })
+                      return next
+                    })
+                  }}>
                     <Show when={pendingForkWinner() === undefined}>
                       <box position="absolute" top={0} right={0} zIndex={200} flexDirection="row">
                         <box
                           paddingLeft={1} paddingRight={1}
                           backgroundColor={theme.backgroundElement}
-                          onMouseUp={() => toggleMaximize(1)}
+                          onMouseUp={(e: any) => { e.stopPropagation(); toggleMaximize(1) }}
                         >
                           <text fg={theme.text}>{maximizedSlot() === 1 ? "▾" : "▸"}</text>
                         </box>
                         <box
                           paddingLeft={1} paddingRight={1}
                           backgroundColor={selectedSlots().has(1) ? theme.success : theme.backgroundElement}
-                          onMouseUp={() => {
+                          onMouseUp={(e: any) => {
+                            e.stopPropagation()
                             setSelectedSlots(prev => {
                               const next = new Set(prev)
                               if (next.has(1)) next.delete(1); else next.add(1)
@@ -1124,20 +1141,28 @@ export function Session() {
                   </box>
                 </Show>
                 <Show when={slot2Width() > 0 && allSessionIDs()[2]}>
-                  <box ref={(r: any) => { slot2BoxRef = r }} width={slot2Width()} height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(2) ? theme.success : theme.border} overflow="hidden">
+                  <box ref={(r: any) => { slot2BoxRef = r }} width={slot2Width()} height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(2) ? theme.success : theme.border} overflow="hidden" onMouseUp={() => {
+                    setSelectedSlots(prev => {
+                      const next = new Set(prev)
+                      if (next.has(2)) next.delete(2); else next.add(2)
+                      duelLog.info("slot clicked", { slot: 2, selected: [...next], selectedSessionIDs: [...next].map(s => allSessionIDs()[s]) })
+                      return next
+                    })
+                  }}>
                     <Show when={pendingForkWinner() === undefined}>
                       <box position="absolute" top={0} right={0} zIndex={200} flexDirection="row">
                         <box
                           paddingLeft={1} paddingRight={1}
                           backgroundColor={theme.backgroundElement}
-                          onMouseUp={() => toggleMaximize(2)}
+                          onMouseUp={(e: any) => { e.stopPropagation(); toggleMaximize(2) }}
                         >
                           <text fg={theme.text}>{maximizedSlot() === 2 ? "▾" : "▸"}</text>
                         </box>
                         <box
                           paddingLeft={1} paddingRight={1}
                           backgroundColor={selectedSlots().has(2) ? theme.success : theme.backgroundElement}
-                          onMouseUp={() => {
+                          onMouseUp={(e: any) => {
+                            e.stopPropagation()
                             setSelectedSlots(prev => {
                               const next = new Set(prev)
                               if (next.has(2)) next.delete(2); else next.add(2)
@@ -1164,20 +1189,28 @@ export function Session() {
                   </box>
                 </Show>
                 <Show when={slot3Width() > 0 && allSessionIDs()[3]}>
-                  <box ref={(r: any) => { slot3BoxRef = r }} width={slot3Width()} height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(3) ? theme.success : theme.border} overflow="hidden">
+                  <box ref={(r: any) => { slot3BoxRef = r }} width={slot3Width()} height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(3) ? theme.success : theme.border} overflow="hidden" onMouseUp={() => {
+                    setSelectedSlots(prev => {
+                      const next = new Set(prev)
+                      if (next.has(3)) next.delete(3); else next.add(3)
+                      duelLog.info("slot clicked", { slot: 3, selected: [...next], selectedSessionIDs: [...next].map(s => allSessionIDs()[s]) })
+                      return next
+                    })
+                  }}>
                     <Show when={pendingForkWinner() === undefined}>
                       <box position="absolute" top={0} right={0} zIndex={200} flexDirection="row">
                         <box
                           paddingLeft={1} paddingRight={1}
                           backgroundColor={theme.backgroundElement}
-                          onMouseUp={() => toggleMaximize(3)}
+                          onMouseUp={(e: any) => { e.stopPropagation(); toggleMaximize(3) }}
                         >
                           <text fg={theme.text}>{maximizedSlot() === 3 ? "▾" : "▸"}</text>
                         </box>
                         <box
                           paddingLeft={1} paddingRight={1}
                           backgroundColor={selectedSlots().has(3) ? theme.success : theme.backgroundElement}
-                          onMouseUp={() => {
+                          onMouseUp={(e: any) => {
+                            e.stopPropagation()
                             setSelectedSlots(prev => {
                               const next = new Set(prev)
                               if (next.has(3)) next.delete(3); else next.add(3)
