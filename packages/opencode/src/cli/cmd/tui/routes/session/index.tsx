@@ -968,7 +968,7 @@ export function Session() {
             handleUndo()
           }}
         >
-          <text fg={previewedSlot() !== null ? theme.text : theme.textMuted}>Undo</text>
+          <text fg={previewedSlot() !== null ? theme.text : theme.textMuted}>Undo Preview</text>
         </box>
         <Show when={allDone()}>
           <box
@@ -981,7 +981,7 @@ export function Session() {
               finalizeVote()
             }}
           >
-            <text fg={previewedSlot() !== null ? theme.success : theme.textMuted}>Submit</text>
+            <text fg={previewedSlot() !== null ? theme.success : theme.textMuted}>Vote for Previewed Slot</text>
           </box>
         </Show>
       </box>
@@ -989,6 +989,11 @@ export function Session() {
   }
 
   function VoteHint() {
+    const selectedLabel = () => {
+      const slots = [...selectedSlots()].sort()
+      if (slots.length === 0) return ""
+      return ` | sending to slot${slots.length > 1 ? "s" : ""} ${slots.join(", ")}`
+    }
     const hint = () => {
       if (previewedSlot() !== null) {
         return allDone()
@@ -996,8 +1001,8 @@ export function Session() {
           : `previewing slot ${previewedSlot()} — waiting for models to finish`
       }
       return allDone()
-        ? "click a slot to preview, or type a follow-up"
-        : "click a slot to preview while models generate"
+        ? `click a slot to preview its code, or type a follow-up${selectedLabel()}`
+        : `click a slot to preview its code while models generate${selectedLabel()}`
     }
     return (
       <text fg={theme.textMuted}>
