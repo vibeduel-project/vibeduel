@@ -165,12 +165,20 @@ async function doCreateWorktrees(duelRoundId: string, repoPath: string, paths: s
 
 // Returns the list of files changed in a worktree relative to HEAD
 async function getChangedFiles(worktreePath: string): Promise<string[]> {
+  log.info("getChangedFiles: running git diff", { worktreePath })
   const modifiedRaw = await $`git diff --name-only HEAD`.cwd(worktreePath).quiet().text()
+  log.info("getChangedFiles: git diff result", { worktreePath, raw: modifiedRaw.trim(), files: modifiedRaw.trim().split("\n").filter(f => f.length > 0) })
+
+  log.info("getChangedFiles: running git ls-files --others", { worktreePath })
   const untrackedRaw = await $`git ls-files --others --exclude-standard`.cwd(worktreePath).quiet().text()
-  return [...new Set([
+  log.info("getChangedFiles: git ls-files result", { worktreePath, raw: untrackedRaw.trim(), files: untrackedRaw.trim().split("\n").filter(f => f.length > 0) })
+
+  const result = [...new Set([
     ...modifiedRaw.trim().split("\n"),
     ...untrackedRaw.trim().split("\n"),
   ])].filter(f => f.length > 0)
+  log.info("getChangedFiles: final result", { worktreePath, count: result.length, files: result })
+  return result
 }
 
 export async function applyWinnerWorktree(duelRoundId: string, winnerSlot: number, repoPath: string): Promise<void> {
@@ -184,13 +192,14 @@ export async function applyWinnerWorktree(duelRoundId: string, winnerSlot: numbe
     const srcPath = `${worktree}/${file}`
     const dstPath = `${repoPath}/${file}`
     const srcExists = await Bun.file(srcPath).exists()
+    log.info("applyWinnerWorktree: processing file", { duelRoundId, file, srcPath, dstPath, srcExists })
     if (srcExists) {
       await $`mkdir -p ${dstPath.substring(0, dstPath.lastIndexOf("/") + 1)}`.quiet().nothrow()
       await $`cp ${srcPath} ${dstPath}`.quiet()
       log.info("applyWinnerWorktree: copied file", { duelRoundId, file })
     } else {
       await $`rm -f ${dstPath}`.quiet().nothrow()
-      log.info("applyWinnerWorktree: removed file", { duelRoundId, file })
+      log.info("applyWinnerWorktree: removed file (src missing)", { duelRoundId, file })
     }
   }
 
@@ -220,20 +229,28 @@ const originalSnapshots = new Map<string, Map<string, Buffer | null>>()
 
 // Snapshot the original state of all files that any slot changed
 export async function snapshotOriginalFiles(duelRoundId: string, repoPath: string, slotCount: number = 2): Promise<void> {
-  if (originalSnapshots.has(duelRoundId)) {
-    log.info("snapshotOriginalFiles: already snapshotted", { duelRoundId })
+  const existing = originalSnapshots.get(duelRoundId)
+
+  const slotPaths = Array.from({ length: slotCount }, (_, i) => `${DUEL_WORKTREE_BASE}/${duelRoundId}/${i}`)
+  log.info("snapshotOriginalFiles: gathering changed files from slots", { duelRoundId, slotCount, slotPaths, hasExisting: !!existing })
+  const fileArrays = await Promise.all(slotPaths.map(p => getChangedFiles(p)))
+  log.info("snapshotOriginalFiles: per-slot changed files", { duelRoundId, fileArrays: fileArrays.map((files, i) => ({ slot: i, files })) })
+  const allFiles = [...new Set(fileArrays.flat())]
+
+  // Filter to only new files not already in the snapshot
+  const newFiles = existing ? allFiles.filter(f => !existing.has(f)) : allFiles
+  log.info("snapshotOriginalFiles: snapshotting", { duelRoundId, slotCount, totalCount: allFiles.length, newCount: newFiles.length, newFiles })
+
+  if (newFiles.length === 0 && existing) {
+    log.info("snapshotOriginalFiles: no new files to snapshot", { duelRoundId })
     return
   }
 
-  const slotPaths = Array.from({ length: slotCount }, (_, i) => `${DUEL_WORKTREE_BASE}/${duelRoundId}/${i}`)
-  const fileArrays = await Promise.all(slotPaths.map(p => getChangedFiles(p)))
-  const allFiles = [...new Set(fileArrays.flat())]
-  log.info("snapshotOriginalFiles: snapshotting", { duelRoundId, slotCount, count: allFiles.length, files: allFiles })
-
-  const snapshot = new Map<string, Buffer | null>()
-  for (const file of allFiles) {
+  const snapshot = existing ?? new Map<string, Buffer | null>()
+  for (const file of newFiles) {
     const filePath = `${repoPath}/${file}`
     const exists = await Bun.file(filePath).exists()
+    log.info("snapshotOriginalFiles: file state", { duelRoundId, file, filePath, existsInRepo: exists, willBeNull: !exists })
     if (exists) {
       const content = Buffer.from(await Bun.file(filePath).arrayBuffer())
       snapshot.set(file, content)
@@ -258,11 +275,14 @@ export async function previewWorktree(duelRoundId: string, slot: number, repoPat
     const srcPath = `${worktree}/${file}`
     const dstPath = `${repoPath}/${file}`
     const srcExists = await Bun.file(srcPath).exists()
+    log.info("previewWorktree: processing file", { duelRoundId, slot, file, srcPath, dstPath, srcExists })
     if (srcExists) {
       await $`mkdir -p ${dstPath.substring(0, dstPath.lastIndexOf("/") + 1)}`.quiet().nothrow()
       await $`cp ${srcPath} ${dstPath}`.quiet()
+      log.info("previewWorktree: copied file", { duelRoundId, slot, file })
     } else {
       await $`rm -f ${dstPath}`.quiet().nothrow()
+      log.info("previewWorktree: removed file (src missing)", { duelRoundId, slot, file })
     }
   }
 
@@ -277,7 +297,10 @@ export async function revertToOriginal(duelRoundId: string, repoPath: string): P
     return
   }
 
-  log.info("revertToOriginal: reverting", { duelRoundId, fileCount: snapshot.size })
+  const snapshotFiles = [...snapshot.entries()].map(([f, c]) => ({ file: f, isNull: c === null }))
+  log.info("revertToOriginal: reverting", { duelRoundId, fileCount: snapshot.size, snapshotFiles })
+
+  const dirsToClean = new Set<string>()
 
   for (const [file, content] of snapshot) {
     const filePath = `${repoPath}/${file}`
@@ -285,11 +308,26 @@ export async function revertToOriginal(duelRoundId: string, repoPath: string): P
       // File didn't exist before — delete it
       await $`rm -f ${filePath}`.quiet().nothrow()
       log.info("revertToOriginal: removed file", { duelRoundId, file })
+      // Track parent dir for cleanup
+      const dir = filePath.substring(0, filePath.lastIndexOf("/"))
+      if (dir && dir !== repoPath) dirsToClean.add(dir)
     } else {
       // Restore original content
       await $`mkdir -p ${filePath.substring(0, filePath.lastIndexOf("/") + 1)}`.quiet().nothrow()
       await Bun.write(filePath, content)
       log.info("revertToOriginal: restored file", { duelRoundId, file })
+    }
+  }
+
+  // Remove empty parent directories bottom-up (rmdir only removes empty dirs)
+  const sortedDirs = [...dirsToClean].sort((a, b) => b.length - a.length)
+  for (const dir of sortedDirs) {
+    let current = dir
+    while (current.length > repoPath.length) {
+      const result = await $`rmdir ${current}`.quiet().nothrow()
+      log.info("revertToOriginal: rmdir attempt", { duelRoundId, dir: current, exitCode: result.exitCode, stderr: result.stderr.toString().trim() })
+      if (result.exitCode !== 0) break // not empty, stop walking up
+      current = current.substring(0, current.lastIndexOf("/"))
     }
   }
 
