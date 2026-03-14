@@ -1,3 +1,4 @@
+- user-facing term for "slot" is "model"
 - "session" - a full session of using vibeduel - a session is composed of duel rounds or normal single-model turns
 - "duel round" - starts when a user toggles duel mode and enters an initial message. end when the user submits a vote for one of the slots/agents. prior to submitting a vote, the user can submit follow-ups messages to individual slots.
 - your api key lives in ~/.local/share/vibeduel/auth.json

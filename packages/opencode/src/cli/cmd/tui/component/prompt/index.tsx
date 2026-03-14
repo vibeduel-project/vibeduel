@@ -1329,7 +1329,7 @@ export function Prompt(props: PromptProps) {
                 <text fg={theme.textMuted} wrapMode="none">{tokenContext() ?? ""}</text>
                 <text fg={creditsBlink() ? theme.warning : theme.textMuted} wrapMode="none">Credits: {credits() !== null ? `${credits()}/250` : "—"}</text>
                 <Show when={local.model.current()?.modelID === "duel"}>
-                  <text fg={theme.success} wrapMode="none">+{duelCountSignal()}</text>
+                  <text fg={theme.success} wrapMode="none">×{duelCountSignal()}</text>
                 </Show>
               </box>
             </box>
@@ -1450,6 +1450,9 @@ export function Prompt(props: PromptProps) {
                   </text>
                   <text fg={theme.text}>
                     {keybind.print("command_list")} <span style={{ fg: theme.textMuted }}>commands</span>
+                  </text>
+                  <text fg={theme.text}>
+                    ctrl+o <span style={{ fg: theme.textMuted }}>VibeDuel help</span>
                   </text>
                 </Match>
                 <Match when={store.mode === "shell"}>

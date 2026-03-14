@@ -249,6 +249,19 @@ export function Session() {
   const allViewScrollRefs: (ScrollBoxRenderable | undefined)[] = []
   const [selectedSlots, setSelectedSlots] = createSignal<Set<number>>(new Set())
 
+  // Help overlay
+  const [showHelp, setShowHelp] = createSignal(false)
+  useKeyboard((evt) => {
+    if (evt.ctrl && evt.name === "o") {
+      evt.preventDefault()
+      setShowHelp(prev => !prev)
+    }
+    if (showHelp() && evt.name === "escape") {
+      evt.preventDefault()
+      setShowHelp(false)
+    }
+  })
+
   // Layout refs for position logging
   let gridContainerRef: any = undefined
   let row0BoxRef: any = undefined
@@ -954,7 +967,7 @@ export function Session() {
                 handlePreview(index())
               }}
             >
-              <text fg={previewedSlot() === index() ? "blue" : theme.text}>Slot {index()}</text>
+              <text fg={previewedSlot() === index() ? "blue" : theme.text}>Model {index()}</text>
             </box>
           )}
         </For>
@@ -992,17 +1005,17 @@ export function Session() {
     const selectedLabel = () => {
       const slots = [...selectedSlots()].sort()
       if (slots.length === 0) return ""
-      return ` | sending to slot${slots.length > 1 ? "s" : ""} ${slots.join(", ")}`
+      return ` | sending to model${slots.length > 1 ? "s" : ""} ${slots.join(", ")}`
     }
     const hint = () => {
       if (previewedSlot() !== null) {
         return allDone()
-          ? `previewing slot ${previewedSlot()} — click submit to vote`
-          : `previewing slot ${previewedSlot()} — waiting for models to finish`
+          ? `previewing model ${previewedSlot()} — click submit to vote`
+          : `previewing model ${previewedSlot()} — waiting for models to finish`
       }
       return allDone()
-        ? `click a slot to preview its code, or type a follow-up${selectedLabel()}`
-        : `click a slot to preview its code while models generate${selectedLabel()}`
+        ? `click a model button to preview its code, or click a model pane to send a follow-up${selectedLabel()}`
+        : `click a model button to preview its code while models generate${selectedLabel()}`
     }
     return (
       <text fg={theme.textMuted}>
@@ -1045,6 +1058,51 @@ export function Session() {
       }}
     >
       <box flexDirection="column">
+        <Show when={showHelp()}>
+          <box
+            position="absolute"
+            width={dimensions().width}
+            height={dimensions().height}
+            alignItems="center"
+            justifyContent="center"
+            left={0}
+            top={0}
+            zIndex={999}
+            onMouseUp={() => setShowHelp(false)}
+          >
+            <box
+              backgroundColor={theme.backgroundPanel}
+              border={["left", "right", "top", "bottom"]}
+              borderColor={theme.border}
+              paddingLeft={2}
+              paddingRight={2}
+              paddingTop={1}
+              paddingBottom={1}
+              onMouseUp={(e: any) => e.stopPropagation()}
+            >
+              <box flexDirection="column" gap={0}>
+                <text fg={theme.text} bold>VibeDuel Help</text>
+                <text> </text>
+                <text fg={theme.text}>Modes</text>
+                <text fg={theme.textMuted}>  shift+tab to cycle between single mode, ×2 duel, and ×4 duel</text>
+                <text> </text>
+                <text fg={theme.text}>Duel Controls</text>
+                <text fg={theme.textMuted}>  Click [Model N]  preview a model's changes in your codebase</text>
+                <text fg={theme.textMuted}>  Click [Undo Preview]  revert preview changes</text>
+                <text fg={theme.textMuted}>  Click [Vote for Previewed Slot]  vote for the previewed model</text>
+                <text> </text>
+                <text fg={theme.text}>Follow-ups</text>
+                <text fg={theme.textMuted}>  Click a model's pane or its [○] button to select it</text>
+                <text fg={theme.textMuted}>  You can select multiple slots, then type a follow-up message</text>
+                <text> </text>
+                <text fg={theme.text}>Layout</text>
+                <text fg={theme.textMuted}>  [▸] maximize a slot   [▾] restore it back</text>
+                <text> </text>
+                <text fg={theme.textMuted}>press ctrl+o or esc to close</text>
+              </box>
+            </box>
+          </box>
+        </Show>
         <box flexDirection="column" flexGrow={1}>
           <box flexDirection="column" flexGrow={1} ref={(r: any) => { gridContainerRef = r }} onMouseMove={(e: any) => setMousePos({ x: e.x, y: e.y })}>
               <box flexDirection="row" flexGrow={0} height={row0Height()} ref={(r: any) => { row0BoxRef = r }}>
@@ -1254,7 +1312,7 @@ export function Session() {
                     {(sessionID, index) => (
                       <>
                         <Show when={index() > 0}><text fg={theme.textMuted}> | </text></Show>
-                        <text fg={theme.textMuted}>Slot {index()}: </text>
+                        <text fg={theme.textMuted}>Model {index()}: </text>
                         <text fg={theme.text}>{modelReveal()![sessionID] ?? "unknown"}</text>
                       </>
                     )}
