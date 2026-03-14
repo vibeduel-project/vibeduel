@@ -287,6 +287,16 @@ export async function previewWorktree(duelRoundId: string, slot: number, repoPat
   }
 
   log.info("previewWorktree: done", { duelRoundId, slot, fileCount: changedFiles.length })
+
+  // Delayed diff: 5s after preview, compare user's repo to the worktree
+  setTimeout(async () => {
+    try {
+      const result = await $`diff -r ${repoPath} ${worktree}`.quiet().nothrow().text()
+      log.info("previewWorktree: delayed diff (5s)", { duelRoundId, slot, repoPath, worktree, diff: result.trim() })
+    } catch (e) {
+      log.warn("previewWorktree: delayed diff failed", { duelRoundId, slot, error: String(e) })
+    }
+  }, 5000)
 }
 
 // Revert the repo to the original state from the snapshot
