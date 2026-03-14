@@ -142,7 +142,7 @@ async function doCreateWorktrees(duelRoundId: string, repoPath: string, paths: s
     if (srcExists) {
       for (const p of paths) {
         await $`mkdir -p ${p}/${file.substring(0, file.lastIndexOf("/") + 1)}`.quiet().nothrow()
-        await $`cp ${srcPath} ${p}/${file}`.quiet()
+        await $`rsync -a --inplace ${srcPath} ${p}/${file}`.quiet()
       }
     } else {
       for (const p of paths) {
@@ -195,7 +195,7 @@ export async function applyWinnerWorktree(duelRoundId: string, winnerSlot: numbe
     log.info("applyWinnerWorktree: processing file", { duelRoundId, file, srcPath, dstPath, srcExists })
     if (srcExists) {
       await $`mkdir -p ${dstPath.substring(0, dstPath.lastIndexOf("/") + 1)}`.quiet().nothrow()
-      await $`cp ${srcPath} ${dstPath}`.quiet()
+      await $`rsync -a --inplace ${srcPath} ${dstPath}`.quiet()
       log.info("applyWinnerWorktree: copied file", { duelRoundId, file })
     } else {
       await $`rm -f ${dstPath}`.quiet().nothrow()
@@ -278,7 +278,7 @@ export async function previewWorktree(duelRoundId: string, slot: number, repoPat
     log.info("previewWorktree: processing file", { duelRoundId, slot, file, srcPath, dstPath, srcExists })
     if (srcExists) {
       await $`mkdir -p ${dstPath.substring(0, dstPath.lastIndexOf("/") + 1)}`.quiet().nothrow()
-      await $`cp ${srcPath} ${dstPath}`.quiet()
+      await $`rsync -a --inplace ${srcPath} ${dstPath}`.quiet()
       log.info("previewWorktree: copied file", { duelRoundId, slot, file })
     } else {
       await $`rm -f ${dstPath}`.quiet().nothrow()
