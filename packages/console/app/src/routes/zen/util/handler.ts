@@ -87,7 +87,7 @@ export async function handler(
     const stickyTracker = createStickyTracker(modelInfo.stickyProvider, sessionId)
     const stickyProvider = await stickyTracker?.get()
     const authInfo = await authenticate(modelInfo)
-    const billingSource = validateBilling(authInfo, modelInfo)
+    const billingSource = validateBilling(authInfo, modelInfo, model)
 
     const retriableRequest = async (retry: RetryOptions = { excludeProviders: [], retryCount: 0 }) => {
       const providerInfo = selectProvider(
@@ -514,11 +514,12 @@ export async function handler(
     }
   }
 
-  function validateBilling(authInfo: AuthInfo, modelInfo: ModelInfo): BillingSource {
+  function validateBilling(authInfo: AuthInfo, modelInfo: ModelInfo, model: string): BillingSource {
     if (!authInfo) return "anonymous"
     if (authInfo.provider?.credentials) return "byok"
     if (authInfo.isFree) return "free"
     if (modelInfo.allowAnonymous) return "free"
+    if (model === "duel") return "duel"
 
     // Validate subscription billing
     if (authInfo.billing.subscription && authInfo.subscription) {
