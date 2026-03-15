@@ -1082,7 +1082,7 @@ export function Session() {
               onMouseUp={(e: any) => e.stopPropagation()}
             >
               <box flexDirection="column" gap={0}>
-                <text fg={theme.text} bold>VibeDuel Help</text>
+                <text fg={theme.text}><span style={{ bold: true }}>VibeDuel Help</span></text>
                 <text> </text>
                 <text fg={theme.text}>Modes</text>
                 <text fg={theme.textMuted}>  shift+tab to cycle between single mode, ×2 duel, and ×4 duel</text>

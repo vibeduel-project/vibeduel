@@ -652,7 +652,7 @@ function App() {
             onMouseUp={(e: any) => e.stopPropagation()}
           >
             <box flexDirection="column" gap={0}>
-              <text fg={theme.text} bold>VibeDuel Reminder</text>
+              <text fg={theme.text}><span style={{ bold: true }}>VibeDuel Reminder</span></text>
               <text> </text>
               <text fg={theme.textMuted}>Welcome to the VibeDuel Beta.</text>
               <text> </text>
