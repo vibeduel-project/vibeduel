@@ -25,7 +25,7 @@ import {
   MacOSScrollAccel,
   type ScrollAcceleration,
   TextAttributes,
-  type RGBA,
+  RGBA,
 } from "@opentui/core"
 import { Prompt, type PromptRef, autoDuelPreviousModel, clearAutoDuelPreviousModel, getDuelCount, setDuelCountSignal } from "@tui/component/prompt"
 import { Spinner } from "../../component/spinner"
@@ -1068,6 +1068,7 @@ export function Session() {
             left={0}
             top={0}
             zIndex={999}
+            backgroundColor={RGBA.fromInts(0, 0, 0, 150)}
             onMouseUp={() => setShowHelp(false)}
           >
             <box

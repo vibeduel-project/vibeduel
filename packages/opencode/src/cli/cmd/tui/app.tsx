@@ -1,6 +1,6 @@
 import { render, useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { Clipboard } from "@tui/util/clipboard"
-import { TextAttributes } from "@opentui/core"
+import { TextAttributes, RGBA } from "@opentui/core"
 import { RouteProvider, useRoute } from "@tui/context/route"
 import { Switch, Match, createEffect, untrack, ErrorBoundary, createSignal, onMount, batch, Show, on } from "solid-js"
 import { Installation } from "@/installation"
@@ -194,6 +194,13 @@ function App() {
     renderer.clearSelection()
   }
   const [terminalTitleEnabled, setTerminalTitleEnabled] = createSignal(kv.get("terminal_title_enabled", true))
+  const [showWelcome, setShowWelcome] = createSignal(true)
+  useKeyboard((evt) => {
+    if (showWelcome() && (evt.name === "escape" || evt.name === "return")) {
+      evt.preventDefault()
+      setShowWelcome(false)
+    }
+  })
 
   createEffect(() => {
     console.log(JSON.stringify(route.data))
@@ -621,6 +628,46 @@ function App() {
           <Session />
         </Match>
       </Switch>
+      <Show when={showWelcome()}>
+        <box
+          position="absolute"
+          width={dimensions().width}
+          height={dimensions().height}
+          alignItems="center"
+          justifyContent="center"
+          left={0}
+          top={0}
+          zIndex={999}
+          backgroundColor={RGBA.fromInts(0, 0, 0, 150)}
+          onMouseUp={() => setShowWelcome(false)}
+        >
+          <box
+            backgroundColor={theme.backgroundPanel}
+            border={["left", "right", "top", "bottom"]}
+            borderColor={theme.border}
+            paddingLeft={2}
+            paddingRight={2}
+            paddingTop={1}
+            paddingBottom={1}
+            onMouseUp={(e: any) => e.stopPropagation()}
+          >
+            <box flexDirection="column" gap={0}>
+              <text fg={theme.text} bold>VibeDuel Reminder</text>
+              <text> </text>
+              <text fg={theme.textMuted}>Welcome to the VibeDuel Beta.</text>
+              <text> </text>
+              <text fg={theme.textMuted}>VibeDuel is an open-source research project run by</text>
+              <text fg={theme.textMuted}>researchers at UC Berkeley. Contact Markian Rybchuk</text>
+              <text fg={theme.textMuted}>(m@vibeduel.ai or the Discord server) if you have</text>
+              <text fg={theme.textMuted}>any questions. We use your votes to</text>
+              <text fg={theme.textMuted}>power the leaderboard. We don't log anything besides</text>
+              <text fg={theme.textMuted}>votes at the moment, since we're in beta.</text>
+              <text> </text>
+              <text fg={theme.textMuted}>Press enter or esc to continue</text>
+            </box>
+          </box>
+        </box>
+      </Show>
     </box>
   )
 }
