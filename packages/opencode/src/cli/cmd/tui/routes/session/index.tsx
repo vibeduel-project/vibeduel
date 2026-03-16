@@ -121,6 +121,8 @@ const context = createContext<{
   setAnimationsEnabled: (v: boolean | ((prev: boolean) => boolean)) => void
   activeSessionID: () => string
   setActiveSessionID: (id: string) => void
+  narrowSplit: () => boolean
+  isSplit: () => boolean
 }>()
 
 function use() {
@@ -170,6 +172,12 @@ export function Session() {
   })
 
   const isSplit = createMemo(() => !!(route.opponentSessionIDs?.length))
+
+  const narrowSplit = createMemo(() => {
+    const slotCount = allSessionIDs().length
+    const slotWidth = dimensions().width / slotCount
+    return isSplit() && slotCount >= 4 && slotWidth < 60
+  })
 
   // All session IDs in slot order: [primary, opponent0, opponent1, ...]
   const allSessionIDs = createMemo(() => {
@@ -1055,6 +1063,8 @@ export function Session() {
         sync,
         activeSessionID,
         setActiveSessionID,
+        narrowSplit,
+        isSplit,
       }}
     >
       <box flexDirection="column">
@@ -1619,6 +1629,14 @@ function SessionPane(props: {
   // Create a merged context for this pane
   const ctx = {
     ...parentCtx,
+    isSplit: () => props.isSplit,
+    narrowSplit: () => {
+      // Hide thinking/diff when in 4x duel mode on small terminals
+      // slotCount >= 4 and width per slot < 60 columns
+      const slotCount = props.opponentSessionIDs ? props.opponentSessionIDs.length + 1 : 1
+      const slotWidth = props.width
+      return props.isSplit && slotCount >= 4 && slotWidth < 60
+    },
     get sessionID() {
       return props.sessionID
     },
@@ -2819,8 +2837,10 @@ function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: Ass
     // OpenRouter sends encrypted reasoning data that appears as [REDACTED]
     return props.part.text.replace("[REDACTED]", "").trim()
   })
+  // Hide thinking in narrow split mode (4x duel on small terminals)
+  const showThinking = createMemo(() => ctx.showThinking() && !ctx.narrowSplit)
   return (
-    <Show when={content() && ctx.showThinking()}>
+    <Show when={content() && showThinking()}>
       <box
         id={"text-" + props.part.id}
         paddingLeft={2}
@@ -3294,6 +3314,9 @@ function Edit(props: ToolProps<typeof EditTool>) {
   const ctx = use()
   const { theme, syntax } = useTheme()
 
+  // Hide diff in narrow split mode (4x duel on small terminals)
+  const showDiff = createMemo(() => !ctx.narrowSplit && props.metadata.diff !== undefined)
+
   const view = createMemo(() => {
     const diffStyle = ctx.sync.data.config.tui?.diff_style
     if (diffStyle === "stacked") return "unified"
@@ -3313,7 +3336,7 @@ function Edit(props: ToolProps<typeof EditTool>) {
 
   return (
     <Switch>
-      <Match when={props.metadata.diff !== undefined}>
+      <Match when={showDiff()}>
         <BlockTool title={"← Edit " + normalizePath(props.input.filePath!)}>
           <box paddingLeft={1}>
             <diff

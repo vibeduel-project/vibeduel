@@ -85,7 +85,7 @@ export async function handler(
         retry,
         stickyProvider,
       )
-      validateBilling(authInfo, modelInfo)
+      validateBilling(authInfo, modelInfo, model)
       validateModelSettings(authInfo)
       updateProviderKey(authInfo, providerInfo)
       logger.metric({ provider: providerInfo.id })
@@ -439,11 +439,12 @@ export async function handler(
     }
   }
 
-  function validateBilling(authInfo: AuthInfo, modelInfo: ModelInfo) {
+  function validateBilling(authInfo: AuthInfo, modelInfo: ModelInfo, model: string) {
     if (!authInfo) return
     if (authInfo.provider?.credentials) return
     if (authInfo.isFree) return
     if (modelInfo.allowAnonymous) return
+    if (model === "duel") return
 
     const billing = authInfo.billing
     if (!billing.paymentMethodID)
