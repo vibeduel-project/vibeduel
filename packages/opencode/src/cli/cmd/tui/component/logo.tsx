@@ -1,7 +1,7 @@
 import { TextAttributes } from "@opentui/core"
 import { For } from "solid-js"
 import { useTheme } from "@tui/context/theme"
-const LOGO = `
+export const LOGO = `
 ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
 █                           █
 █          ▀   █            █

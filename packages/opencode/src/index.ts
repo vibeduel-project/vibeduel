@@ -42,7 +42,7 @@ process.on("uncaughtException", (e) => {
 
 const cli = yargs(hideBin(process.argv))
   .parserConfiguration({ "populate--": true })
-  .scriptName("opencode")
+  .scriptName("vibeduel")
   .wrap(100)
   .help("help", "show help")
   .alias("help", "h")
