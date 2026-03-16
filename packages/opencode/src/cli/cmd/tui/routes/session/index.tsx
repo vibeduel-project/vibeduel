@@ -680,8 +680,8 @@ export function Session() {
         allSessionIDs: allSessionIDs(),
         ratingUpdate: result.rating_update,
       })
-      // Strip "openai/" prefix if present and store as sessionID → cleanName map
-      const cleanName = (name: string) => name.replace(/^openai\//, "")
+      // Strip provider prefix (e.g. "openai/", "anthropic/") if present
+      const cleanName = (name: string) => name.replace(/^[^/]+\//, "")
       const reveal: Record<string, string> = {}
       for (const [sid, model] of Object.entries(result.models ?? {})) {
         reveal[sid] = cleanName(model as string)

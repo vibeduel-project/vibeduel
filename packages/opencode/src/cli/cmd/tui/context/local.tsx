@@ -214,7 +214,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           const info = provider?.models[value.modelID]
           return {
             provider: provider?.name ?? value.providerID,
-            model: info?.name ?? value.modelID,
+            model: (info?.name ?? value.modelID).replace(/^[^/]+\//, ""),
             reasoning: info?.capabilities?.reasoning ?? false,
           }
         }),

@@ -8,6 +8,8 @@ import { createDialogProviderOptions, DialogProvider } from "./dialog-provider"
 import { Keybind } from "@/util/keybind"
 import * as fuzzysort from "fuzzysort"
 
+const stripProvider = (name: string) => name.replace(/^[^/]+\//, "")
+
 export function useConnected() {
   const sync = useSync()
   return createMemo(() =>
@@ -54,7 +56,7 @@ export function DialogModel(props: { providerID?: string }) {
             providerID: provider.id,
             modelID: model.id,
           },
-          title: model.name ?? item.modelID,
+          title: stripProvider(model.name ?? item.modelID),
           description: provider.name,
           category: "Favorites",
           disabled: provider.id === "opencode" && model.id.includes("-nano"),
@@ -85,7 +87,7 @@ export function DialogModel(props: { providerID?: string }) {
             providerID: provider.id,
             modelID: model.id,
           },
-          title: model.name ?? item.modelID,
+          title: stripProvider(model.name ?? item.modelID),
           description: provider.name,
           category: "Recent",
           disabled: provider.id === "opencode" && model.id.includes("-nano"),
@@ -123,7 +125,7 @@ export function DialogModel(props: { providerID?: string }) {
             }
             return {
               value,
-              title: info.name ?? model,
+              title: stripProvider(info.name ?? model),
               description: favorites.some(
                 (item) => item.providerID === value.providerID && item.modelID === value.modelID,
               )

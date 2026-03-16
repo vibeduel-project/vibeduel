@@ -278,14 +278,7 @@ export function Home() {
                               ? "Tied"
                               : (() => {
                                   const name = item.model.includes("/")
-                                    ? (() => {
-                                        const parts = item.model.split("/")[1]
-                                        // Strip trailing part like -A35B from Qwen3-Coder-480B-A35B
-                                        return parts.includes("-") &&
-                                          /\d+B$/.test(parts.split("-").slice(0, -1).join("-"))
-                                          ? parts.split("-").slice(0, -1).join("-")
-                                          : parts
-                                      })()
+                                    ? item.model.split("/").slice(1).join("/")
                                     : item.model
                                   return index < 3 ? <strong>{name}</strong> : name
                                 })()}
