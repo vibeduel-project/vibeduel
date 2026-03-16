@@ -123,6 +123,7 @@ const context = createContext<{
   setActiveSessionID: (id: string) => void
   narrowSplit: () => boolean
   isSplit: () => boolean
+  compactView: () => boolean
 }>()
 
 function use() {
@@ -186,6 +187,9 @@ export function Session() {
     const slotWidth = dimensions().width / slotCount
     return isSplit() && slotCount >= 4 && slotWidth < 60
   })
+
+  // Hide thinking/diffs when terminal is too narrow (under 150 width)
+  const compactView = createMemo(() => dimensions().width < 150)
 
   // Track which session pane is currently active (has focus)
   const [activeSessionID, setActiveSessionID] = createSignal(route.sessionID)
@@ -1065,6 +1069,7 @@ export function Session() {
         setActiveSessionID,
         narrowSplit,
         isSplit,
+        compactView,
       }}
     >
       <box flexDirection="column">
@@ -2838,28 +2843,42 @@ function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: Ass
     return props.part.text.replace("[REDACTED]", "").trim()
   })
   // Hide thinking in narrow split mode (4x duel on small terminals)
+  // In compact view, show placeholder that can be expanded
   const showThinking = createMemo(() => ctx.showThinking() && !ctx.narrowSplit)
+  const isCompact = createMemo(() => ctx.compactView() && showThinking())
   return (
-    <Show when={content() && showThinking()}>
-      <box
-        id={"text-" + props.part.id}
-        paddingLeft={2}
-        marginTop={1}
-        flexDirection="column"
-        border={["left"]}
-        customBorderChars={SplitBorder.customBorderChars}
-        borderColor={theme.backgroundElement}
-      >
-        <code
-          filetype="markdown"
-          drawUnstyledText={false}
-          streaming={true}
-          syntaxStyle={subtleSyntax()}
-          content={"_Thinking:_ " + content()}
-          conceal={ctx.conceal()}
-          fg={theme.textMuted}
-        />
-      </box>
+    <Show when={content() && (showThinking() || isCompact())}>
+      <Show when={isCompact()} fallback={
+        <box
+          id={"text-" + props.part.id}
+          paddingLeft={2}
+          marginTop={1}
+          flexDirection="column"
+          border={["left"]}
+          customBorderChars={SplitBorder.customBorderChars}
+          borderColor={theme.backgroundElement}
+        >
+          <code
+            filetype="markdown"
+            drawUnstyledText={false}
+            streaming={true}
+            syntaxStyle={subtleSyntax()}
+            content={"_Thinking:_ " + content()}
+            conceal={ctx.conceal()}
+            fg={theme.textMuted}
+          />
+        </box>
+      }>
+        <box
+          id={"text-" + props.part.id}
+          paddingLeft={2}
+          marginTop={1}
+          border={["left"]}
+          borderColor={theme.backgroundElement}
+        >
+          <text fg={theme.textMuted}>[Thought]</text>
+        </box>
+      </Show>
     </Show>
   )
 }
@@ -3315,7 +3334,9 @@ function Edit(props: ToolProps<typeof EditTool>) {
   const { theme, syntax } = useTheme()
 
   // Hide diff in narrow split mode (4x duel on small terminals)
+  // In compact view, show placeholder
   const showDiff = createMemo(() => !ctx.narrowSplit && props.metadata.diff !== undefined)
+  const isCompact = createMemo(() => ctx.compactView() && props.metadata.diff !== undefined)
 
   const view = createMemo(() => {
     const diffStyle = ctx.sync.data.config.tui?.diff_style
@@ -3334,9 +3355,13 @@ function Edit(props: ToolProps<typeof EditTool>) {
     return arr.filter((x) => x.severity === 1).slice(0, 3)
   })
 
+  // Determine what to show: full diff, compact placeholder, or inline
+  const showFullDiff = createMemo(() => showDiff() && !isCompact())
+  const showCompactPlaceholder = createMemo(() => isCompact() && props.metadata.diff !== undefined)
+
   return (
     <Switch>
-      <Match when={showDiff()}>
+      <Match when={showFullDiff()}>
         <BlockTool title={"← Edit " + normalizePath(props.input.filePath!)}>
           <box paddingLeft={1}>
             <diff
@@ -3371,6 +3396,13 @@ function Edit(props: ToolProps<typeof EditTool>) {
               </For>
             </box>
           </Show>
+        </BlockTool>
+      </Match>
+      <Match when={showCompactPlaceholder()}>
+        <BlockTool title={"← Edit " + normalizePath(props.input.filePath!)}>
+          <box paddingLeft={1}>
+            <text fg={theme.textMuted}>[Edited file]</text>
+          </box>
         </BlockTool>
       </Match>
       <Match when={true}>
