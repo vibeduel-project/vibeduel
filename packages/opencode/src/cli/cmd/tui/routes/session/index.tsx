@@ -121,6 +121,8 @@ const context = createContext<{
   setAnimationsEnabled: (v: boolean | ((prev: boolean) => boolean)) => void
   activeSessionID: () => string
   setActiveSessionID: (id: string) => void
+  // Compact mode: true when width < 150, 4x duel mode, and model version not expanded
+  compactMode: () => boolean
 }>()
 
 function use() {
@@ -211,6 +213,15 @@ export function Session() {
   const [pendingForkIDs, setPendingForkIDs] = createSignal<{ primaryID: string; opponentIDs: string[] } | undefined>(undefined)
   // Model reveal after voting: maps sessionID → model name (as returned by backend)
   const [modelReveal, setModelReveal] = createSignal<Record<string, string> | undefined>(undefined)
+
+  // Compact mode: true when width < 150, 4x duel mode, and model version not expanded
+  const compactMode = createMemo(() => {
+    const is4x = getDuelCount() === 4
+    const isNarrow = dimensions().width < 150
+    const modelNotRevealed = !modelReveal() || awaitingVote()
+    return is4x && isNarrow && modelNotRevealed
+  })
+
   const [lastToggleAt, setLastToggleAt] = createSignal(0)
   const [autoDuelDone, setAutoDuelDone] = createSignal(false)
   // Pending duel entry: single→duel transition prepared, waiting for next prompt submit
@@ -1055,6 +1066,7 @@ export function Session() {
         sync,
         activeSessionID,
         setActiveSessionID,
+        compactMode,
       }}
     >
       <box flexDirection="column">
@@ -1646,6 +1658,7 @@ function SessionPane(props: {
     setDiffWrapMode,
     animationsEnabled,
     setAnimationsEnabled,
+    compactMode,
   } = ctx
 
   const children = createMemo(() => {
@@ -2819,6 +2832,13 @@ function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: Ass
     // OpenRouter sends encrypted reasoning data that appears as [REDACTED]
     return props.part.text.replace("[REDACTED]", "").trim()
   })
+  // In compact mode, replace "Thinking:" with "Thinking..." and hide actual content
+  const displayContent = createMemo(() => {
+    if (ctx.compactMode()) {
+      return "Thinking..."
+    }
+    return "_Thinking:_ " + content()
+  })
   return (
     <Show when={content() && ctx.showThinking()}>
       <box
@@ -2835,7 +2855,7 @@ function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: Ass
           drawUnstyledText={false}
           streaming={true}
           syntaxStyle={subtleSyntax()}
-          content={"_Thinking:_ " + content()}
+          content={displayContent()}
           conceal={ctx.conceal()}
           fg={theme.textMuted}
         />
@@ -3111,6 +3131,7 @@ function Bash(props: ToolProps<typeof BashTool>) {
 
 function Write(props: ToolProps<typeof WriteTool>) {
   const { theme, syntax } = useTheme()
+  const ctx = use()
   const code = createMemo(() => {
     if (!props.input.content) return ""
     return props.input.content
@@ -3121,10 +3142,18 @@ function Write(props: ToolProps<typeof WriteTool>) {
     return props.metadata.diagnostics?.[filePath] ?? []
   })
 
+  // In compact mode, replace title with "Edited file" and hide content
+  const title = createMemo(() => {
+    if (ctx.compactMode()) {
+      return "Edited file"
+    }
+    return "# Wrote " + normalizePath(props.input.filePath!)
+  })
+
   return (
     <Switch>
-      <Match when={props.metadata.diagnostics !== undefined}>
-        <BlockTool title={"# Wrote " + normalizePath(props.input.filePath!)}>
+      <Match when={props.metadata.diagnostics !== undefined && !ctx.compactMode()}>
+        <BlockTool title={title()}>
           <line_number fg={theme.textMuted} minWidth={3} paddingRight={1}>
             <code
               conceal={false}
@@ -3147,7 +3176,7 @@ function Write(props: ToolProps<typeof WriteTool>) {
       </Match>
       <Match when={true}>
         <InlineTool icon="←" pending="Preparing write..." complete={props.input.filePath} part={props.part}>
-          Write {normalizePath(props.input.filePath!)}
+          {title()}
         </InlineTool>
       </Match>
     </Switch>
@@ -3311,10 +3340,18 @@ function Edit(props: ToolProps<typeof EditTool>) {
     return arr.filter((x) => x.severity === 1).slice(0, 3)
   })
 
+  // In compact mode, replace diff with "Edited file"
+  const title = createMemo(() => {
+    if (ctx.compactMode()) {
+      return "Edited file"
+    }
+    return "← Edit " + normalizePath(props.input.filePath!)
+  })
+
   return (
     <Switch>
-      <Match when={props.metadata.diff !== undefined}>
-        <BlockTool title={"← Edit " + normalizePath(props.input.filePath!)}>
+      <Match when={props.metadata.diff !== undefined && !ctx.compactMode()}>
+        <BlockTool title={title()}>
           <box paddingLeft={1}>
             <diff
               diff={diffContent()}
@@ -3352,7 +3389,7 @@ function Edit(props: ToolProps<typeof EditTool>) {
       </Match>
       <Match when={true}>
         <InlineTool icon="←" pending="Preparing edit..." complete={props.input.filePath} part={props.part}>
-          Edit {normalizePath(props.input.filePath!)} {input({ replaceAll: props.input.replaceAll })}
+          {title()}
         </InlineTool>
       </Match>
     </Switch>
