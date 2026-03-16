@@ -173,18 +173,18 @@ export function Session() {
 
   const isSplit = createMemo(() => !!(route.opponentSessionIDs?.length))
 
-  const narrowSplit = createMemo(() => {
-    const slotCount = allSessionIDs().length
-    const slotWidth = dimensions().width / slotCount
-    return isSplit() && slotCount >= 4 && slotWidth < 60
-  })
-
   // All session IDs in slot order: [primary, opponent0, opponent1, ...]
   const allSessionIDs = createMemo(() => {
     const ids = [route.sessionID]
     if (route.opponentSessionIDs) ids.push(...route.opponentSessionIDs)
     duelLog.info("allSessionIDs recomputed", { ids, routeSessionID: route.sessionID, opponentSessionIDs: route.opponentSessionIDs })
     return ids
+  })
+
+  const narrowSplit = createMemo(() => {
+    const slotCount = allSessionIDs().length
+    const slotWidth = dimensions().width / slotCount
+    return isSplit() && slotCount >= 4 && slotWidth < 60
   })
 
   // Track which session pane is currently active (has focus)
