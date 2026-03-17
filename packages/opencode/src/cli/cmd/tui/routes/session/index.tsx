@@ -121,8 +121,8 @@ const context = createContext<{
   setAnimationsEnabled: (v: boolean | ((prev: boolean) => boolean)) => void
   activeSessionID: () => string
   setActiveSessionID: (id: string) => void
-  // Compact mode: true when width < 150, 4x duel mode, and model version not expanded
-  compactMode: () => boolean
+  // Simple mode: true when width < 150, 4x duel mode, and model version not expanded
+  simpleMode: () => boolean
 }>()
 
 function use() {
@@ -150,6 +150,7 @@ export function Session() {
   const promptRef = usePromptRef()
   const toast = useToast()
   const sdk = useSDK()
+  const renderer = useRenderer()
   const local = useLocal()
 
   const [sidebar, setSidebar] = createSignal<"show" | "hide" | "auto">(kv.get("sidebar", "hide"))
@@ -214,13 +215,16 @@ export function Session() {
   // Model reveal after voting: maps sessionID → model name (as returned by backend)
   const [modelReveal, setModelReveal] = createSignal<Record<string, string> | undefined>(undefined)
 
-  // Compact mode: true when width < 150, 4x duel mode, and model version not expanded
-  const compactMode = createMemo(() => {
+  // Simple mode: auto-enabled when width < 150, 4x duel, model not revealed
+  // ctrl+l overrides: null = follow auto, true/false = user forced
+  const [simpleOverride, setSimpleOverride] = createSignal<boolean | null>(null)
+  const autoSimple = createMemo(() => {
     const is4x = getDuelCount() === 4
     const isNarrow = dimensions().width < 150
     const modelNotRevealed = !modelReveal() || awaitingVote()
     return is4x && isNarrow && modelNotRevealed
   })
+  const simpleMode = createMemo(() => simpleOverride() !== null ? simpleOverride()! : autoSimple())
 
   const [lastToggleAt, setLastToggleAt] = createSignal(0)
   const [autoDuelDone, setAutoDuelDone] = createSignal(false)
@@ -263,6 +267,12 @@ export function Session() {
   // Help overlay
   const [showHelp, setShowHelp] = createSignal(false)
   useKeyboard((evt) => {
+    if (evt.ctrl && evt.name === "l") {
+      evt.preventDefault()
+      const next = !simpleMode()
+      setSimpleOverride(next)
+      renderer.requestRender()
+    }
     if (evt.ctrl && evt.name === "o") {
       evt.preventDefault()
       setShowHelp(prev => !prev)
@@ -1066,7 +1076,7 @@ export function Session() {
         sync,
         activeSessionID,
         setActiveSessionID,
-        compactMode,
+        simpleMode,
       }}
     >
       <box flexDirection="column">
@@ -1658,7 +1668,7 @@ function SessionPane(props: {
     setDiffWrapMode,
     animationsEnabled,
     setAnimationsEnabled,
-    compactMode,
+    simpleMode,
   } = ctx
 
   const children = createMemo(() => {
@@ -2832,9 +2842,9 @@ function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: Ass
     // OpenRouter sends encrypted reasoning data that appears as [REDACTED]
     return props.part.text.replace("[REDACTED]", "").trim()
   })
-  // In compact mode, replace "Thinking:" with "Thinking..." and hide actual content
+  // In simple mode, replace "Thinking:" with "Thinking..." and hide actual content
   const displayContent = createMemo(() => {
-    if (ctx.compactMode()) {
+    if (ctx.simpleMode()) {
       return "Thinking..."
     }
     return "_Thinking:_ " + content()
@@ -3142,9 +3152,9 @@ function Write(props: ToolProps<typeof WriteTool>) {
     return props.metadata.diagnostics?.[filePath] ?? []
   })
 
-  // In compact mode, replace title with "Edited file" and hide content
+  // In simple mode, replace title with "Edited file" and hide content
   const title = createMemo(() => {
-    if (ctx.compactMode()) {
+    if (ctx.simpleMode()) {
       return "Edited file"
     }
     return "# Wrote " + normalizePath(props.input.filePath!)
@@ -3152,7 +3162,7 @@ function Write(props: ToolProps<typeof WriteTool>) {
 
   return (
     <Switch>
-      <Match when={props.metadata.diagnostics !== undefined && !ctx.compactMode()}>
+      <Match when={props.metadata.diagnostics !== undefined && !ctx.simpleMode()}>
         <BlockTool title={title()}>
           <line_number fg={theme.textMuted} minWidth={3} paddingRight={1}>
             <code
@@ -3340,9 +3350,9 @@ function Edit(props: ToolProps<typeof EditTool>) {
     return arr.filter((x) => x.severity === 1).slice(0, 3)
   })
 
-  // In compact mode, replace diff with "Edited file"
+  // In simple mode, replace diff with "Edited file"
   const title = createMemo(() => {
-    if (ctx.compactMode()) {
+    if (ctx.simpleMode()) {
       return "Edited file"
     }
     return "← Edit " + normalizePath(props.input.filePath!)
@@ -3350,7 +3360,7 @@ function Edit(props: ToolProps<typeof EditTool>) {
 
   return (
     <Switch>
-      <Match when={props.metadata.diff !== undefined && !ctx.compactMode()}>
+      <Match when={props.metadata.diff !== undefined && !ctx.simpleMode()}>
         <BlockTool title={title()}>
           <box paddingLeft={1}>
             <diff

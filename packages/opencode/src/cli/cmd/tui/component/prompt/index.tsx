@@ -1449,7 +1449,7 @@ export function Prompt(props: PromptProps) {
                     shift+tab <span style={{ fg: theme.textMuted }}>cycle duel</span>
                   </text>
                   <text fg={theme.text}>
-                    {keybind.print("command_list")} <span style={{ fg: theme.textMuted }}>commands</span>
+                    ctrl+l <span style={{ fg: theme.textMuted }}>simple mode</span>
                   </text>
                   <text fg={theme.text}>
                     ctrl+o <span style={{ fg: theme.textMuted }}>VibeDuel help</span>
