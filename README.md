@@ -37,5 +37,5 @@ Each vote gives **50 credits** and goes to the leaderboard.
 
 ## Uninstall
 ```bash
-curl -fsSL https://vibeduel.ai/uninstall | bash
+curl -fsSL https://vibeduel.ai/uninstall | bash -s -- --yes
 ```

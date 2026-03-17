@@ -113,7 +113,16 @@ echo ""
 
 if [[ "$auto_yes" == "false" ]]; then
     printf "${ORANGE}Proceed with uninstall? [y/N] ${NC}"
-    read -r reply
+    # When invoked as `curl ... | bash`, stdin is the script stream.
+    # Read from the terminal directly so interactive confirmation still works.
+    if [[ -t 0 ]]; then
+        read -r reply
+    elif [[ -r /dev/tty ]]; then
+        read -r reply </dev/tty
+    else
+        print_message warning "No interactive terminal detected. Re-run with --yes to confirm."
+        exit 1
+    fi
     if [[ "$reply" != "y" && "$reply" != "Y" ]]; then
         print_message info "${MUTED}Aborted.${NC}"
         exit 0
