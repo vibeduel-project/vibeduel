@@ -561,6 +561,19 @@ export function Session() {
     return (row0Height() ?? 0) - wrapperBorder
   })
 
+  function slotBorderColor(slot: number) {
+    return selectedSlots().has(slot) ? theme.success : theme.border
+  }
+
+  // Whether a slot is a loser (greyed out after vote)
+  function isLosingSlot(slot: number) {
+    const winner = pendingForkWinner()
+    return winner !== undefined && slot !== winner
+  }
+
+  // Whether slot clicking (selection) should be disabled (post-vote)
+  const slotClickDisabled = () => pendingForkWinner() !== undefined
+
   createEffect(() => {
     const split = isSplit()
     const awaiting = awaitingVote()
@@ -736,8 +749,6 @@ export function Session() {
 
     setLastChosenSessionID(freshID)
     setPendingForkIDs({ primaryID: freshID, opponentIDs })
-    // Maximize the winner slot
-    toggleMaximize(slot)
     setControlSlot(slot)
     // Store the winning slot so the fork-after-vote flow uses freshID on next prompt
     setPendingForkWinner(slot)
@@ -1129,8 +1140,8 @@ export function Session() {
           <box flexDirection="column" flexGrow={1} ref={(r: any) => { gridContainerRef = r }} onMouseMove={(e: any) => setMousePos({ x: e.x, y: e.y })}>
               <box flexDirection="row" flexGrow={0} height={row0Height()} ref={(r: any) => { row0BoxRef = r }}>
                 <Show when={slot0Width() > 0}>
-                  <box ref={(r: any) => { slot0BoxRef = r }} width={slot0Width()} height="100%" border={allSessionIDs().length > 1 ? ["left", "right", "top", "bottom"] : undefined} borderColor={selectedSlots().has(0) ? theme.success : theme.border} overflow="hidden" onMouseUp={() => {
-                    if (allSessionIDs().length <= 1) return
+                  <box ref={(r: any) => { slot0BoxRef = r }} width={slot0Width()} height="100%" border={allSessionIDs().length > 1 ? ["left", "right", "top", "bottom"] : undefined} borderColor={slotBorderColor(0)} overflow="hidden" onMouseUp={() => {
+                    if (allSessionIDs().length <= 1 || slotClickDisabled()) return
                     setSelectedSlots(prev => {
                       const next = new Set(prev)
                       if (next.has(0)) next.delete(0); else next.add(0)
@@ -1175,10 +1186,14 @@ export function Session() {
                       onScrollRef={(r) => { allViewScrollRefs[0] = r }}
                       onScrollIntercept={routeScrollToCorrectSlot}
                     />
+                    <Show when={isLosingSlot(0)}>
+                      <box position="absolute" left={0} top={0} width="100%" height="100%" backgroundColor={RGBA.fromInts(0, 0, 0, 60)} zIndex={100} />
+                    </Show>
                   </box>
                 </Show>
                 <Show when={slot1Width() > 0 && allSessionIDs()[1]}>
-                  <box ref={(r: any) => { slot1BoxRef = r }} width={slot1Width()} height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(1) ? theme.success : theme.border} overflow="hidden" onMouseUp={() => {
+                  <box ref={(r: any) => { slot1BoxRef = r }} width={slot1Width()} height="100%" border={["left", "right", "top", "bottom"]} borderColor={slotBorderColor(1)} overflow="hidden" onMouseUp={() => {
+                    if (slotClickDisabled()) return
                     setSelectedSlots(prev => {
                       const next = new Set(prev)
                       if (next.has(1)) next.delete(1); else next.add(1)
@@ -1223,10 +1238,14 @@ export function Session() {
                       onScrollRef={(r) => { allViewScrollRefs[1] = r }}
                       onScrollIntercept={routeScrollToCorrectSlot}
                     />
+                    <Show when={isLosingSlot(1)}>
+                      <box position="absolute" left={0} top={0} width="100%" height="100%" backgroundColor={RGBA.fromInts(0, 0, 0, 60)} zIndex={100} />
+                    </Show>
                   </box>
                 </Show>
                 <Show when={slot2Width() > 0 && allSessionIDs()[2]}>
-                  <box ref={(r: any) => { slot2BoxRef = r }} width={slot2Width()} height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(2) ? theme.success : theme.border} overflow="hidden" onMouseUp={() => {
+                  <box ref={(r: any) => { slot2BoxRef = r }} width={slot2Width()} height="100%" border={["left", "right", "top", "bottom"]} borderColor={slotBorderColor(2)} overflow="hidden" onMouseUp={() => {
+                    if (slotClickDisabled()) return
                     setSelectedSlots(prev => {
                       const next = new Set(prev)
                       if (next.has(2)) next.delete(2); else next.add(2)
@@ -1271,10 +1290,14 @@ export function Session() {
                       onScrollRef={(r) => { allViewScrollRefs[2] = r }}
                       onScrollIntercept={routeScrollToCorrectSlot}
                     />
+                    <Show when={isLosingSlot(2)}>
+                      <box position="absolute" left={0} top={0} width="100%" height="100%" backgroundColor={RGBA.fromInts(0, 0, 0, 60)} zIndex={100} />
+                    </Show>
                   </box>
                 </Show>
                 <Show when={slot3Width() > 0 && allSessionIDs()[3]}>
-                  <box ref={(r: any) => { slot3BoxRef = r }} width={slot3Width()} height="100%" border={["left", "right", "top", "bottom"]} borderColor={selectedSlots().has(3) ? theme.success : theme.border} overflow="hidden" onMouseUp={() => {
+                  <box ref={(r: any) => { slot3BoxRef = r }} width={slot3Width()} height="100%" border={["left", "right", "top", "bottom"]} borderColor={slotBorderColor(3)} overflow="hidden" onMouseUp={() => {
+                    if (slotClickDisabled()) return
                     setSelectedSlots(prev => {
                       const next = new Set(prev)
                       if (next.has(3)) next.delete(3); else next.add(3)
@@ -1319,6 +1342,9 @@ export function Session() {
                       onScrollRef={(r) => { allViewScrollRefs[3] = r }}
                       onScrollIntercept={routeScrollToCorrectSlot}
                     />
+                    <Show when={isLosingSlot(3)}>
+                      <box position="absolute" left={0} top={0} width="100%" height="100%" backgroundColor={RGBA.fromInts(0, 0, 0, 60)} zIndex={100} />
+                    </Show>
                   </box>
                 </Show>
               </box>
@@ -1334,7 +1360,6 @@ export function Session() {
                     {(sessionID, index) => (
                       <>
                         <Show when={index() > 0}><text fg={theme.textMuted}> | </text></Show>
-                        <text fg={theme.textMuted}>Model {index()}: </text>
                         <text fg={theme.text}>{modelReveal()![sessionID] ?? "unknown"}</text>
                       </>
                     )}
