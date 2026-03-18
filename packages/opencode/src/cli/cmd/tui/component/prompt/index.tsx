@@ -74,7 +74,7 @@ let lastSingleModel: { providerID: string; modelID: string } | undefined
 export let autoDuelPreviousModel: { providerID: string; modelID: string } | undefined
 export function clearAutoDuelPreviousModel() { autoDuelPreviousModel = undefined }
 // Duel count: how many models compete in a duel (2 or 4, no 3)
-const [duelCountSignal, setDuelCountSignal] = createSignal(2)
+const [duelCountSignal, setDuelCountSignal] = createSignal(4)
 export function getDuelCount() { return duelCountSignal() }
 export { setDuelCountSignal }
 

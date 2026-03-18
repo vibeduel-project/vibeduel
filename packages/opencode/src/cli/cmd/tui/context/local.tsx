@@ -141,9 +141,21 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
       const args = useArgs()
       const fallbackModel = createMemo(() => {
+        modelLog.info("fallbackModel: resolving", {
+          argsModel: args.model,
+          configModel: sync.data.config.model,
+          recentCount: modelStore.recent.length,
+          recent: modelStore.recent,
+          providerCount: sync.data.provider.length,
+          providers: sync.data.provider.map(p => ({ id: p.id, models: Object.keys(p.models) })),
+          provider_defaults: sync.data.provider_default,
+        })
+
         if (args.model) {
           const { providerID, modelID } = Provider.parseModel(args.model)
-          if (isModelValid({ providerID, modelID })) {
+          const valid = isModelValid({ providerID, modelID })
+          modelLog.info("fallbackModel: CLI arg", { providerID, modelID, valid })
+          if (valid) {
             return {
               providerID,
               modelID,
@@ -153,7 +165,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
         if (sync.data.config.model) {
           const { providerID, modelID } = Provider.parseModel(sync.data.config.model)
-          if (isModelValid({ providerID, modelID })) {
+          const valid = isModelValid({ providerID, modelID })
+          modelLog.info("fallbackModel: config model", { providerID, modelID, valid })
+          if (valid) {
             return {
               providerID,
               modelID,
@@ -161,33 +175,58 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           }
         }
 
+        // Provider default (e.g. "duel") takes priority over recent history
+        const provider = sync.data.provider[0]
+        if (provider) {
+          const defaultModel = sync.data.provider_default[provider.id]
+          if (defaultModel && isModelValid({ providerID: provider.id, modelID: defaultModel })) {
+            modelLog.info("fallbackModel: provider default", { providerId: provider.id, defaultModel })
+            return {
+              providerID: provider.id,
+              modelID: defaultModel,
+            }
+          }
+        }
+
         for (const item of modelStore.recent) {
-          if (isModelValid(item)) {
+          const valid = isModelValid(item)
+          modelLog.info("fallbackModel: recent item", { providerID: item.providerID, modelID: item.modelID, valid })
+          if (valid) {
             return item
           }
         }
 
-        const provider = sync.data.provider[0]
-        if (!provider) return undefined
-        const defaultModel = sync.data.provider_default[provider.id]
+        if (!provider) {
+          modelLog.info("fallbackModel: no provider available")
+          return undefined
+        }
         const firstModel = Object.values(provider.models)[0]
-        const model = defaultModel ?? firstModel?.id
-        if (!model) return undefined
+        modelLog.info("fallbackModel: first model fallback", { providerId: provider.id, firstModelId: firstModel?.id })
+        if (!firstModel?.id) return undefined
         return {
           providerID: provider.id,
-          modelID: model,
+          modelID: firstModel.id,
         }
       })
 
       const currentModel = createMemo(() => {
         const a = agent.current()
-        return (
-          getFirstValidModel(
-            () => modelStore.model[a.name],
-            () => a.model,
-            fallbackModel,
-          ) ?? undefined
-        )
+        const agentModel = modelStore.model[a.name]
+        const agentDefault = a.model
+        const fb = fallbackModel()
+        const result = getFirstValidModel(
+          () => agentModel,
+          () => agentDefault,
+          () => fb,
+        ) ?? undefined
+        modelLog.info("currentModel resolved", {
+          agent: a.name,
+          agentModel,
+          agentDefault,
+          fallback: fb,
+          result,
+        })
+        return result
       })
 
       return {
