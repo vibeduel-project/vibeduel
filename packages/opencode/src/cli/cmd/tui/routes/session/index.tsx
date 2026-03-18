@@ -708,9 +708,8 @@ export function Session() {
         reveal[sid] = cleanName(model as string)
       }
       setModelReveal(reveal)
-      // Clean up snapshot, worktrees, and in-memory duel state — the preview is now permanent
+      // Clean up snapshot and in-memory duel state — worktrees are preserved for editor review
       clearSnapshot(duelRoundId)
-      await cleanupRoundWorktrees(duelRoundId, process.cwd())
       for (const sid of allSessionIDs()) {
         clearDuel(sid)
         clearDuelWorktree(sid)

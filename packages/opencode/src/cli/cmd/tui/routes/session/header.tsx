@@ -17,9 +17,11 @@ const ContextInfo = (props: { context: Accessor<string | undefined>; credits: Ac
         <text fg={theme.textMuted} wrapMode="none">
           {props.context()}
         </text>
-        <text fg={theme.textMuted} wrapMode="none">
-          Credits: {props.credits() !== null ? `${props.credits()}/250` : "—"}
-        </text>
+        <Show when={props.credits() !== null && props.credits()! < 99999}>
+          <text fg={theme.textMuted} wrapMode="none">
+            Credits: {`${props.credits()}/250`}
+          </text>
+        </Show>
         <Show when={local.model.current()?.modelID === "duel"}>
           <text fg={theme.success} wrapMode="none">+{getDuelCount()}</text>
         </Show>

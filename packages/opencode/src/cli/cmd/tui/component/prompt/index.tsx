@@ -1327,7 +1327,9 @@ export function Prompt(props: PromptProps) {
               {/* Right side: token context + credits */}
               <box flexDirection="row" gap={2}>
                 <text fg={theme.textMuted} wrapMode="none">{tokenContext() ?? ""}</text>
-                <text fg={creditsBlink() ? theme.warning : theme.textMuted} wrapMode="none">Credits: {credits() !== null ? `${credits()}/250` : "—"}</text>
+                <Show when={credits() !== null && credits()! < 99999}>
+                  <text fg={creditsBlink() ? theme.warning : theme.textMuted} wrapMode="none">Credits: {`${credits()}/250`}</text>
+                </Show>
                 <Show when={local.model.current()?.modelID === "duel"}>
                   <text fg={theme.success} wrapMode="none">×{duelCountSignal()}</text>
                 </Show>
