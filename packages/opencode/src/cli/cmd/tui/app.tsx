@@ -582,7 +582,7 @@ function App() {
     toast.show({
       variant: "success",
       title: "Update Complete",
-      message: `OpenCode updated to v${evt.properties.version}`,
+      message: `VibeDuel updated to v${evt.properties.version}`,
       duration: 5000,
     })
   })
@@ -591,7 +591,7 @@ function App() {
     toast.show({
       variant: "info",
       title: "Update Available",
-      message: `OpenCode v${evt.properties.version} is available. Run 'opencode upgrade' to update manually.`,
+      message: `VibeDuel v${evt.properties.version} is available. Run 'vibeduel upgrade' to update manually.`,
       duration: 10000,
     })
   })

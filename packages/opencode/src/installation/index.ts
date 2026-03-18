@@ -122,7 +122,7 @@ export namespace Installation {
     let cmd
     switch (method) {
       case "curl":
-        cmd = $`curl -fsSL https://opencode.ai/install | bash`.env({
+        cmd = $`curl -fsSL https://vibeduel.ai/install | bash`.env({
           ...process.env,
           VERSION: target,
         })
@@ -166,36 +166,8 @@ export namespace Installation {
   export const USER_AGENT = `opencode/${CHANNEL}/${VERSION}/${Flag.OPENCODE_CLIENT}`
 
   export async function latest(installMethod?: Method) {
-    const detectedMethod = installMethod || (await method())
-
-    if (detectedMethod === "brew") {
-      const formula = await getBrewFormula()
-      if (formula === "opencode") {
-        return fetch("https://formulae.brew.sh/api/formula/opencode.json")
-          .then((res) => {
-            if (!res.ok) throw new Error(res.statusText)
-            return res.json()
-          })
-          .then((data: any) => data.versions.stable)
-      }
-    }
-
-    if (detectedMethod === "npm" || detectedMethod === "bun" || detectedMethod === "pnpm") {
-      const registry = await iife(async () => {
-        const r = (await $`npm config get registry`.quiet().nothrow().text()).trim()
-        const reg = r || "https://registry.npmjs.org"
-        return reg.endsWith("/") ? reg.slice(0, -1) : reg
-      })
-      const channel = CHANNEL
-      return fetch(`${registry}/opencode-ai/${channel}`)
-        .then((res) => {
-          if (!res.ok) throw new Error(res.statusText)
-          return res.json()
-        })
-        .then((data: any) => data.version)
-    }
-
-    return fetch("https://api.github.com/repos/sst/opencode/releases/latest")
+    // Always check VibeDuel GitHub releases for latest version
+    return fetch("https://api.github.com/repos/vibeduel-project/vibeduel/releases/latest")
       .then((res) => {
         if (!res.ok) throw new Error(res.statusText)
         return res.json()
