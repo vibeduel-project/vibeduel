@@ -56,7 +56,7 @@ import { Identifier } from "@/id/id"
 function logToSlot(slot: number, text: string) {
   duelLog.info(text, { slot })
 }
-import { applyWinnerWorktree, snapshotOriginalFiles, previewWorktree, revertToOriginal, clearSnapshot, cleanupRoundWorktrees, clearDuel, clearDuelWorktree, logRoundStart } from "@/duel"
+import { applyWinnerWorktree, snapshotOriginalFiles, previewWorktree, revertToOriginal, clearSnapshot, cleanupRoundWorktrees, clearDuel, clearDuelWorktree, logRoundStart, dumpWorktreeSlot } from "@/duel"
 import { setSessionTrackingNumber, getSessionTrackingNumber } from "@/session-tracking"
 import { TodoItem } from "../../component/todo-item"
 import { DialogMessage } from "./dialog-message"
@@ -1793,6 +1793,11 @@ function SessionPane(props: {
       textLength: text.length,
     })
     setLastLoggedID(msg.id)
+
+    const duelRoundId = route.duelRoundId
+    if (duelRoundId) {
+      dumpWorktreeSlot(duelRoundId, props.slot)
+    }
   })
 
   let scroll: ScrollBoxRenderable

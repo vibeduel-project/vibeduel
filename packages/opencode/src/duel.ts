@@ -12,6 +12,13 @@ const _env = typeof Bun !== "undefined" ? (Bun as { env: Record<string, string |
 const LOG_WORKTREE_DUMPS = _env["VIBEDUEL_LOG_WORKTREE_DUMPS"] === "1"
 export const LOG_DUEL_TOOL_OPS = _env["VIBEDUEL_LOG_DUEL_TOOL_OPS"] === "1"
 
+export async function dumpWorktreeSlot(duelRoundId: string, slot: number): Promise<void> {
+  if (!LOG_WORKTREE_DUMPS) return
+  const wtPath = `${DUEL_WORKTREE_BASE}/${duelRoundId}/${slot}`
+  const dump = await $`find ${wtPath} -maxdepth 2 -type f -not -path '*/\.git/*' -exec sh -c 'echo "=== {} ===" && cat "{}"' \;`.quiet().text()
+  log.info(`dumpWorktreeSlot: slot ${slot} generation complete`, { duelRoundId, slot, path: wtPath, dump: dump.trim() })
+}
+
 export const DUEL_WORKTREE_BASE = path.join(os.homedir(), ".local", "share", "vibeduel", "worktree")
 
 // Maps opencode sessionID -> backend duel session ID
